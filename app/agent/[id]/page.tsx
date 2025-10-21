@@ -13,6 +13,7 @@ export default function AgentRoomPage() {
   const params = useParams();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const isSendingRef = useRef(false);
+  const socketInitializedRef = useRef(false);
 
   const agentId = params?.id as string;
 
@@ -58,8 +59,16 @@ export default function AgentRoomPage() {
 
   // Socket connection and agent info
   useEffect(() => {
-    if (!agentId || isLoading || !currentUser) return;
+    if (!agentId || !currentUser) return;
 
+    // 防止重复初始化
+    if (socketInitializedRef.current) {
+      console.log("WebSocket已初始化，跳过重复初始化");
+      return;
+    }
+
+    console.log("开始建立WebSocket连接，用户ID:", currentUser.id);
+    socketInitializedRef.current = true;
     const socket = socketService.connect();
 
     socket.on("connect", () => {
@@ -266,10 +275,13 @@ export default function AgentRoomPage() {
     });
 
     return () => {
+      console.log("清理WebSocket连接和事件监听器");
       socket.removeAllListeners();
-      socket.disconnect();
+      // 不要在这里断开连接，让Socket.io自己管理连接
+      // socket.disconnect();
+      socketInitializedRef.current = false; // 重置初始化标志
     };
-  }, [agentId, isLoading, currentUser]);
+  }, [agentId, currentUser?.id]); // 只依赖用户ID，避免重复连接
 
   // Handle nickname submission
   const handleNicknameSubmit = (e: React.FormEvent) => {

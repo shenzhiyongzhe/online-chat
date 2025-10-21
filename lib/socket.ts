@@ -15,7 +15,21 @@ class SocketService {
 
   connect(): Socket {
     if (this.socket?.connected) {
+      console.log("🔌 WebSocket 已连接，返回现有连接");
       return this.socket;
+    }
+
+    if (this.socket && !this.socket.connected) {
+      console.log("🔌 WebSocket 存在但未连接，尝试重连");
+      this.socket.connect();
+      return this.socket;
+    }
+
+    // 如果socket存在但已断开，先清理
+    if (this.socket) {
+      console.log("🔌 清理旧的WebSocket连接");
+      this.socket.removeAllListeners();
+      this.socket = null;
     }
 
     // 确保只在客户端环境初始化Socket
@@ -28,10 +42,14 @@ class SocketService {
 
     this.socket = io(this.url, {
       path: "/api/socket",
-      transports: ["polling", "websocket"], // 先尝试轮询
+      transports: ["websocket", "polling"], // 优先使用websocket
       autoConnect: true,
-      forceNew: true,
+      forceNew: false, // 不强制创建新连接
       timeout: 20000,
+      reconnection: true, // 启用自动重连
+      reconnectionAttempts: 5, // 最多重连5次
+      reconnectionDelay: 1000, // 重连延迟1秒
+      reconnectionDelayMax: 5000, // 最大重连延迟5秒
     });
 
     // 添加连接事件监听
@@ -45,6 +63,22 @@ class SocketService {
 
     this.socket.on("disconnect", (reason) => {
       console.log("🔌 WebSocket 断开连接:", reason);
+    });
+
+    this.socket.on("reconnect", (attemptNumber) => {
+      console.log("🔄 WebSocket 重连成功，尝试次数:", attemptNumber);
+    });
+
+    this.socket.on("reconnect_attempt", (attemptNumber) => {
+      console.log("🔄 WebSocket 重连尝试:", attemptNumber);
+    });
+
+    this.socket.on("reconnect_error", (error) => {
+      console.error("❌ WebSocket 重连失败:", error);
+    });
+
+    this.socket.on("reconnect_failed", () => {
+      console.error("❌ WebSocket 重连彻底失败");
     });
 
     return this.socket;

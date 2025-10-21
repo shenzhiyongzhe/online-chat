@@ -13,6 +13,7 @@ import { MessageNotification } from "../../components/ui/MessageNotification";
 export default function AgentChatPage() {
   const router = useRouter();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const socketInitializedRef = useRef(false);
   const [isConnected, setIsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   // 移动端侧边栏状态
@@ -128,8 +129,16 @@ export default function AgentChatPage() {
   }, [messages]);
   // Socket连接逻辑
   useEffect(() => {
-    if (!currentUser || isLoading) return;
+    if (!currentUser) return;
 
+    // 防止重复初始化
+    if (socketInitializedRef.current) {
+      console.log("WebSocket已初始化，跳过重复初始化");
+      return;
+    }
+
+    console.log("开始建立WebSocket连接，用户ID:", currentUser.id);
+    socketInitializedRef.current = true;
     const socket = socketService.connect();
 
     socket.on("connect", () => {
@@ -356,11 +365,14 @@ export default function AgentChatPage() {
     });
 
     return () => {
+      console.log("清理WebSocket连接和事件监听器");
       socket.removeAllListeners(); // Remove all listeners before disconnect
-      socket.disconnect();
+      // 不要在这里断开连接，让Socket.io自己管理连接
+      // socket.disconnect();
+      socketInitializedRef.current = false; // 重置初始化标志
       clearChat();
     };
-  }, [currentUser, isLoading]);
+  }, [currentUser?.id]); // 只依赖用户ID，避免重复连接
 
   const handleSendMessage = (content: string) => {
     if (!currentConversation || !currentUser) return;
@@ -389,13 +401,17 @@ export default function AgentChatPage() {
   };
 
   const handleSelectConversation = (conversation: Conversation) => {
+    console.log("选择会话:", conversation.id);
     setCurrentConversation(conversation);
     setMessages([]); // 清空当前消息，准备加载历史消息
 
     // 请求历史消息
     console.log("请求会话历史消息:", conversation.id);
-    socketService.emit("messages:get", conversation.id);
-    socketService.emit("messages:read", conversation.id);
+    const socket = socketService.getSocket();
+    if (socket) {
+      socket.emit("messages:get", conversation.id);
+      socket.emit("messages:read", conversation.id);
+    }
 
     setConversations((prev) =>
       prev.map((conv) =>
@@ -502,7 +518,7 @@ export default function AgentChatPage() {
   const chatPartner = getCurrentChatPartner();
 
   return (
-    <div className="h-screen flex bg-gray-100 relative">
+    <div className="h-screen flex bg-gray-100 relative overflow-hidden">
       {/* 左侧客户列表 */}
       <div
         className={`
@@ -680,31 +696,42 @@ export default function AgentChatPage() {
       )}
 
       {/* 右侧聊天区域 */}
-      <div className="flex-1 flex flex-col w-full md:w-auto">
+      <div className="flex-1 flex flex-col w-full md:w-auto min-h-0">
         {currentConversation && chatPartner ? (
           <>
             {/* 聊天头部 */}
             <div className="p-4 border-b border-gray-200 bg-white">
-              <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 bg-gray-300 rounded-full flex items-center justify-center">
-                  <span className="text-sm font-medium text-gray-600">
-                    {chatPartner.name.charAt(0)}
-                  </span>
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900">
-                    {chatPartner.name}
-                  </h3>
-                  <div className="flex items-center space-x-1">
-                    <div className="w-2 h-2 rounded-full bg-green-500" />
-                    <span className="text-sm text-gray-500">在线</span>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className="w-10 h-10 bg-gray-300 rounded-full flex items-center justify-center">
+                    <span className="text-sm font-medium text-gray-600">
+                      {chatPartner.name.charAt(0)}
+                    </span>
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      {chatPartner.name}
+                    </h3>
+                    <div className="flex items-center space-x-1">
+                      <div className="w-2 h-2 rounded-full bg-green-500" />
+                      <span className="text-sm text-gray-500">在线</span>
+                    </div>
                   </div>
                 </div>
+                <button
+                  onClick={() => {
+                    localStorage.removeItem("agentInfo");
+                    router.push("/admin");
+                  }}
+                  className="px-3 py-1 text-sm text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md transition-colors"
+                >
+                  退出登录
+                </button>
               </div>
             </div>
 
             {/* 消息区域 */}
-            <div className="flex-1 overflow-y-auto p-4 bg-gray-50">
+            <div className="flex-1 overflow-y-auto p-4 bg-gray-50 min-h-0">
               {messages.length === 0 ? (
                 <div className="flex items-center justify-center h-full text-gray-500">
                   <p>开始对话吧...</p>
@@ -729,11 +756,13 @@ export default function AgentChatPage() {
             </div>
 
             {/* 输入区域 */}
-            <MessageInput
-              onSendMessage={handleSendMessage}
-              disabled={!isConnected}
-              placeholder={isConnected ? "输入消息..." : "连接中..."}
-            />
+            <div className="flex-shrink-0">
+              <MessageInput
+                onSendMessage={handleSendMessage}
+                disabled={!isConnected}
+                placeholder={isConnected ? "输入消息..." : "连接中..."}
+              />
+            </div>
           </>
         ) : (
           /* 欢迎页面 */

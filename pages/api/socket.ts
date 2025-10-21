@@ -129,8 +129,10 @@ export default async function SocketHandler(
     },
     transports: ["websocket", "polling"],
     allowEIO3: true,
-    pingTimeout: 60000,
-    pingInterval: 25000,
+    pingTimeout: 30000, // 减少ping超时时间
+    pingInterval: 10000, // 减少ping间隔，更频繁检测
+    connectTimeout: 20000, // 连接超时时间
+    upgradeTimeout: 10000, // 升级超时时间
   });
 
   res.socket.server.io = io;
@@ -220,7 +222,8 @@ export default async function SocketHandler(
       try {
         const messages = await prisma.message.findMany({
           where: { conversationId },
-          orderBy: { createdAt: "asc" },
+          orderBy: { createdAt: "desc" }, // 按时间倒序，获取最新消息
+          take: 100, // 限制返回最近100条消息
           select: {
             id: true,
             conversationId: true,
@@ -232,11 +235,13 @@ export default async function SocketHandler(
           },
         });
 
-        // 转换时间格式以匹配前端期望
-        const formattedMessages = messages.map((msg) => ({
-          ...msg,
-          timestamp: msg.createdAt.toISOString(),
-        }));
+        // 转换时间格式以匹配前端期望，并按时间正序排列
+        const formattedMessages = messages
+          .map((msg) => ({
+            ...msg,
+            timestamp: msg.createdAt.toISOString(),
+          }))
+          .reverse(); // 反转数组，使消息按时间正序显示
 
         socket.emit("messages:list", formattedMessages);
         console.log(
