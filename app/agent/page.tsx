@@ -502,30 +502,29 @@ export default function AgentChatPage() {
       >
         {/* 头部 */}
         <div className="p-4 border-b border-gray-200">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center space-x-2">
-              <h2 className="text-lg font-semibold text-gray-900">在线客户</h2>
-              {/* 移动端关闭按钮 */}
-              <button
-                onClick={() => setIsSidebarOpen(false)}
-                className="md:hidden text-gray-500 hover:text-gray-700 ml-auto"
-                aria-label="关闭客户列表"
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={() => setIsSidebarOpen(false)}
+              className="md:hidden text-gray-500 hover:text-gray-700 ml-auto"
+              aria-label="关闭客户列表"
+            >
+              <svg
+                className="w-6 h-6"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
               >
-                <svg
-                  className="w-6 h-6"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-              </button>
-            </div>
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+          </div>
+          <div className="text-sm text-gray-600 hidden md:block">
+            {currentUser.name}
             <div className="flex items-center space-x-2 hidden md:flex">
               <div
                 className={`w-2 h-2 rounded-full ${
@@ -536,9 +535,6 @@ export default function AgentChatPage() {
                 {isConnected ? "已连接" : "连接中..."}
               </span>
             </div>
-          </div>
-          <div className="text-sm text-gray-600 hidden md:block">
-            欢迎，{currentUser.name}
           </div>
         </div>
 
@@ -639,7 +635,7 @@ export default function AgentChatPage() {
       {/* 移动端遮罩层 */}
       {isSidebarOpen && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-50 z-20 md:hidden"
+          className="fixed inset-0 bg-gray-500/50  backdrop-blur-sm bg-opacity-50 z-20 md:hidden"
           onClick={() => setIsSidebarOpen(false)}
         />
       )}

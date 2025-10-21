@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { MessageCircle, User, ArrowRight } from "lucide-react";
 import { MessageBubble } from "../../../components/chat/MessageBubble";
 import { MessageInput } from "../../../components/chat/MessageInput";
@@ -11,8 +11,8 @@ import { Message, Conversation, Agent, CurrentUser } from "../../../types";
 
 export default function AgentRoomPage() {
   const params = useParams();
-  const router = useRouter();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const isSendingRef = useRef(false);
 
   const agentId = params?.id as string;
 
@@ -42,8 +42,13 @@ export default function AgentRoomPage() {
         isOnline: true,
       };
       setCurrentUser(currentUser);
+      // Trigger WebSocket connection after user is set
+      setIsLoading(false);
+    } else {
+      // Show nickname modal if no saved nickname
+      setShowNicknameModal(true);
+      setIsLoading(false);
     }
-    setIsLoading(false);
   }, []);
 
   // Auto scroll to bottom when messages change
@@ -53,7 +58,7 @@ export default function AgentRoomPage() {
 
   // Socket connection and agent info
   useEffect(() => {
-    if (!agentId || isLoading) return;
+    if (!agentId || isLoading || !currentUser) return;
 
     const socket = socketService.connect();
 
@@ -61,10 +66,8 @@ export default function AgentRoomPage() {
       console.log("Client connected to server");
       setIsConnected(true);
 
-      // Login user if exists
-      if (currentUser) {
-        socket.emit("user:login", currentUser);
-      }
+      // Login user (currentUser is guaranteed to exist at this point)
+      socket.emit("user:login", currentUser);
 
       // Get agent list to find the specific agent
       socket.emit("agents:list");
@@ -84,6 +87,19 @@ export default function AgentRoomPage() {
       const targetAgent = agentsList.find((a) => a.agentId === agentId);
       if (targetAgent) {
         setAgent(targetAgent);
+
+        // Auto-create conversation if user exists and no conversation yet
+        if (currentUser && !currentConversation && targetAgent.agentId) {
+          const conversationData = {
+            type: "agent" as const,
+            title: `与 ${targetAgent.name} 的对话`,
+            agentId: targetAgent.agentId,
+            clientId: currentUser.id,
+          };
+
+          console.log("自动创建与客服的会话:", conversationData);
+          socketService.emit("conversation:create", conversationData);
+        }
       } else {
         console.error("Agent not found:", agentId);
         setNicknameError("客服不存在或已离线");
@@ -92,33 +108,39 @@ export default function AgentRoomPage() {
 
     socket.on("message:receive", (message: Message) => {
       console.log("收到新消息:", message);
+      console.log("当前会话ID:", currentConversation?.id);
+      console.log("消息会话ID:", message.conversationId);
+      console.log(currentConversation);
 
-      // Only show messages for current conversation
-      if (
-        currentConversation &&
-        message.conversationId === currentConversation.id
-      ) {
+      // Get current user ID for comparison
+      const currentUserState = localStorage.getItem("clientNickname") || "null";
+      const currentUserId = currentUserState
+        ? `CLIENT_${currentUserState}`
+        : "";
+
+      // Show messages if they belong to current conversation OR if we don't have a conversation yet
+      // This handles the case where messages arrive before conversation state is set
+      const shouldShowMessage =
+        !currentConversation ||
+        message.conversationId === currentConversation.id;
+
+      if (shouldShowMessage) {
         setMessages((prev) => {
-          // Check for duplicates by ID
-          const existingIndex = prev.findIndex((m) => m.id === message.id);
-          if (existingIndex !== -1) {
-            // Update existing message
-            const copy = [...prev];
-            copy[existingIndex] = message;
-            return copy;
-          }
+          console.log("当前消息列表长度:", prev.length);
+          console.log("检查重复消息ID:", message.id);
 
-          // Add new message only if it doesn't exist
           const alreadyExists = prev.some((m) => m.id === message.id);
           if (alreadyExists) {
+            console.log("消息已存在，跳过添加");
             return prev;
           }
 
+          console.log("添加新消息到列表");
           return [...prev, message];
         });
 
         // Mark as read if not sent by current user
-        if (message.senderId !== currentUser?.id) {
+        if (message.senderId !== currentUserId) {
           socketService.emit("messages:read", message.conversationId);
         }
       }
@@ -134,28 +156,42 @@ export default function AgentRoomPage() {
 
     socket.on("messages:list", (msgs: Message[]) => {
       console.log("收到历史消息列表，数量:", msgs?.length ?? 0);
+      console.log(
+        "历史消息列表:",
+        msgs?.map((m) => ({ id: m.id, content: m.content }))
+      );
+      // Replace messages completely to avoid duplicates
       setMessages(msgs || []);
     });
 
     socket.on("conversation:created", (conversation: Conversation) => {
       console.log("收到会话创建成功事件:", conversation);
       setCurrentConversation(conversation);
+
+      // Clear messages when switching to new conversation
       setMessages([]);
 
-      // Get conversation messages
+      // Get conversation messages immediately
+      console.log("加载会话历史消息:", conversation.id);
       socketService.emit("messages:get", conversation.id);
 
       // Send pending message if exists
       const pendingMessage = (window as any).pendingMessage;
       if (pendingMessage) {
         setTimeout(() => {
+          // Get current user from state at the time of execution
+          const currentUserState =
+            localStorage.getItem("clientNickname") || "null";
+          const userId = currentUserState ? `CLIENT_${currentUserState}` : "";
+
           const payload: Omit<Message, "id" | "timestamp" | "status"> = {
             conversationId: conversation.id,
-            senderId: currentUser?.id || "",
+            senderId: userId,
             content: pendingMessage.content,
             type: "text",
           };
 
+          console.log("发送待发送消息:", payload);
           socketService.emit("message:send", payload);
 
           // Clear pending message
@@ -168,7 +204,7 @@ export default function AgentRoomPage() {
       socket.removeAllListeners();
       socket.disconnect();
     };
-  }, [agentId, isLoading, currentConversation, currentUser]);
+  }, [agentId, isLoading, currentUser]);
 
   // Handle nickname submission
   const handleNicknameSubmit = (e: React.FormEvent) => {
@@ -197,44 +233,39 @@ export default function AgentRoomPage() {
     setShowNicknameModal(false);
     setNicknameError("");
 
-    // Login to socket
-    const socket = socketService.getSocket();
-    if (socket) {
-      socket.emit("user:login", currentUser);
-    }
+    // WebSocket connection will be established automatically via useEffect
+    // when currentUser state changes
+    // Conversation will be auto-created when agent info is available
   };
 
   // Handle send message
   const handleSendMessage = (content: string) => {
+    console.log("handleSendMessage 被调用，内容:", content);
+
+    // Prevent duplicate calls
+    if (isSendingRef.current) {
+      console.log("正在发送消息，跳过重复调用");
+      return;
+    }
+
     // Check if user has nickname, if not show modal
     if (!currentUser) {
       setShowNicknameModal(true);
       return;
     }
 
-    // If no conversation exists, create one first
+    // If no conversation exists yet, store message as pending
     if (!currentConversation) {
-      if (!agent || !agent.agentId) return;
-
-      const conversationData = {
-        type: "agent" as const,
-        title: `与 ${agent.name} 的对话`,
-        agentId: agent.agentId,
-        clientId: currentUser.id,
-      };
-
-      console.log("创建与客服的会话:", conversationData);
-      socketService.emit("conversation:create", conversationData);
-
-      // Store the message to send after conversation is created
+      console.log("会话尚未创建，存储待发送消息");
       const pendingMessage = {
         content,
       };
-
-      // Store pending message in a ref or state for later use
       (window as any).pendingMessage = pendingMessage;
       return;
     }
+
+    // Set sending flag
+    isSendingRef.current = true;
 
     // Send message normally - no optimistic update
     const payload: Omit<Message, "id" | "timestamp" | "status"> = {
@@ -244,8 +275,13 @@ export default function AgentRoomPage() {
       type: "text",
     };
 
+    console.log("发送消息到服务端:", payload);
     socketService.emit("message:send", payload);
-    // Message will be added to UI when received from server via message:receive
+
+    // Reset sending flag after a short delay
+    setTimeout(() => {
+      isSendingRef.current = false;
+    }, 1000);
   };
 
   // Clear saved nickname
@@ -255,6 +291,7 @@ export default function AgentRoomPage() {
     setCurrentConversation(null);
     setMessages([]);
     setNickname("");
+    setShowNicknameModal(true);
   };
 
   if (isLoading) {
@@ -301,7 +338,7 @@ export default function AgentRoomPage() {
                   onClick={clearSavedNickname}
                   className="text-sm text-gray-500 hover:text-gray-700 underline"
                 >
-                  切换账号
+                  更换昵称
                 </button>
               </div>
             </div>
@@ -369,7 +406,7 @@ export default function AgentRoomPage() {
                     onClick={clearSavedNickname}
                     className="text-sm text-gray-500 hover:text-gray-700 underline"
                   >
-                    切换账号
+                    更换昵称
                   </button>
                 )}
               </div>
