@@ -90,7 +90,7 @@ export default function AgentRoomPage() {
       }
     });
 
-    socket.on("message:receive", (message: Message & { tempId?: string }) => {
+    socket.on("message:receive", (message: Message) => {
       console.log("收到新消息:", message);
 
       // Only show messages for current conversation
@@ -106,16 +106,6 @@ export default function AgentRoomPage() {
             const copy = [...prev];
             copy[existingIndex] = message;
             return copy;
-          }
-
-          // Replace temp message if exists
-          if (message.tempId) {
-            const tempIndex = prev.findIndex((m) => m.id === message.tempId);
-            if (tempIndex !== -1) {
-              const copy = [...prev];
-              copy[tempIndex] = { ...message };
-              return copy;
-            }
           }
 
           // Add new message only if it doesn't exist
@@ -159,30 +149,14 @@ export default function AgentRoomPage() {
       const pendingMessage = (window as any).pendingMessage;
       if (pendingMessage) {
         setTimeout(() => {
-          const payload: Omit<Message, "id" | "timestamp" | "status"> & {
-            tempId: string;
-          } = {
+          const payload: Omit<Message, "id" | "timestamp" | "status"> = {
             conversationId: conversation.id,
             senderId: currentUser?.id || "",
             content: pendingMessage.content,
             type: "text",
-            tempId: pendingMessage.tempId,
           };
 
           socketService.emit("message:send", payload);
-
-          const newMessage: Message = {
-            ...payload,
-            id: pendingMessage.tempId,
-            timestamp: new Date().toISOString(),
-            status: "sending",
-          };
-          setMessages((prev) => {
-            // Check if message already exists to prevent duplicates
-            const exists = prev.some((m) => m.id === pendingMessage.tempId);
-            if (exists) return prev;
-            return [...prev, newMessage];
-          });
 
           // Clear pending message
           (window as any).pendingMessage = null;
@@ -253,10 +227,8 @@ export default function AgentRoomPage() {
       socketService.emit("conversation:create", conversationData);
 
       // Store the message to send after conversation is created
-      const tempId = generateId();
       const pendingMessage = {
         content,
-        tempId,
       };
 
       // Store pending message in a ref or state for later use
@@ -264,32 +236,16 @@ export default function AgentRoomPage() {
       return;
     }
 
-    // Send message normally
-    const tempId = generateId();
-    const payload: Omit<Message, "id" | "timestamp" | "status"> & {
-      tempId: string;
-    } = {
+    // Send message normally - no optimistic update
+    const payload: Omit<Message, "id" | "timestamp" | "status"> = {
       conversationId: currentConversation.id,
       senderId: currentUser.id,
       content,
       type: "text",
-      tempId,
     };
 
     socketService.emit("message:send", payload);
-
-    const newMessage: Message = {
-      ...payload,
-      id: tempId,
-      timestamp: new Date().toISOString(),
-      status: "sending",
-    };
-    setMessages((prev) => {
-      // Check if message already exists to prevent duplicates
-      const exists = prev.some((m) => m.id === tempId);
-      if (exists) return prev;
-      return [...prev, newMessage];
-    });
+    // Message will be added to UI when received from server via message:receive
   };
 
   // Clear saved nickname

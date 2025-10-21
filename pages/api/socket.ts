@@ -283,7 +283,7 @@ export default async function SocketHandler(
         // 也在内存中保存一份（用于快速访问）
         messages.set(created.id, created);
 
-        // 准备发送给客户端的消息对象（包含 timestamp 与回传 tempId）
+        // 准备发送给客户端的消息对象
         const outgoing = {
           id: created.id,
           conversationId: created.conversationId,
@@ -294,7 +294,6 @@ export default async function SocketHandler(
           timestamp: created.createdAt
             ? created.createdAt.toISOString()
             : new Date().toISOString(),
-          tempId: messageData.tempId, // 回传 client 发来的 tempId，便于替换
         };
 
         // 更新会话的最后消息

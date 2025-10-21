@@ -349,29 +349,14 @@ export default function AgentChatPage() {
   const handleSendMessage = (content: string) => {
     if (!currentConversation || !currentUser) return;
 
-    // 生成临时 ID
-    const tempId = generateId();
-
-    const payload: Omit<Message, "id" | "timestamp" | "status"> & {
-      tempId: string;
-    } = {
+    const payload: Omit<Message, "id" | "timestamp" | "status"> = {
       conversationId: currentConversation.id,
       senderId: currentUser.id,
       content,
       type: "text",
-      tempId, // 发送 tempId 给服务端
     };
 
     socketService.emit("message:send", payload);
-
-    // 乐观添加本地消息
-    const newMessage: Message = {
-      ...payload,
-      id: tempId,
-      timestamp: new Date().toISOString(),
-      status: "sending",
-    };
-    setMessages((prev) => [...prev, newMessage]);
 
     setConversations((prev) =>
       prev.map((conv) =>
@@ -448,7 +433,6 @@ export default function AgentChatPage() {
       return;
     }
 
-    // 乐观创建：生成临时会话并立即切换到它，改善 UX
     const tempId = generateId();
     const tempConversation: Conversation = {
       id: tempId,
