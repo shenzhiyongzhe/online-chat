@@ -140,19 +140,84 @@ export default function AgentRoomPage() {
         });
 
         // Mark as read if not sent by current user
+        // Use setTimeout to ensure message is fully processed before marking as read
         if (message.senderId !== currentUserId) {
-          socketService.emit("messages:read", message.conversationId);
+          setTimeout(() => {
+            socketService.emit("messages:read", message.conversationId);
+          }, 100);
         }
       }
     });
 
     socket.on("message:status", (messageId: string, status: string) => {
       setMessages((prev) =>
-        prev.map((msg) =>
-          msg.id === messageId ? { ...msg, status: status as any } : msg
-        )
+        prev.map((msg) => {
+          if (msg.id === messageId) {
+            // Don't override read status with delivered status
+            if (msg.status === "read" && status === "delivered") {
+              console.log(
+                `消息 ${messageId} 已为已读状态，跳过delivered状态更新`
+              );
+              return msg;
+            }
+            console.log(
+              `更新消息 ${messageId} 状态: ${msg.status} -> ${status}`
+            );
+            return { ...msg, status: status as any };
+          }
+          return msg;
+        })
       );
     });
+
+    // Listen for read status updates
+    socket.on(
+      "messages:read",
+      (data: {
+        conversationId: string;
+        readerId: string;
+        timestamp: string;
+      }) => {
+        console.log("收到已读状态更新:", data);
+
+        // Get current user ID for comparison
+        const currentUserState =
+          localStorage.getItem("clientNickname") || "null";
+        const currentUserId = currentUserState
+          ? `CLIENT_${currentUserState}`
+          : "";
+
+        // Update message status to read for messages in this conversation
+        // that are sent by the current user (because current user is the reader)
+        setMessages((prev) => {
+          const updated = prev.map((msg) => {
+            if (
+              msg.conversationId === data.conversationId &&
+              msg.senderId === currentUserId &&
+              msg.status !== "read"
+            ) {
+              console.log(
+                `更新消息 ${msg.id} 状态为已读，原状态: ${msg.status}`
+              );
+              return { ...msg, status: "read" as const };
+            }
+            return msg;
+          });
+
+          // Log how many messages were updated
+          const updatedCount = updated.filter(
+            (msg, index) =>
+              msg.status === "read" && prev[index].status !== "read"
+          ).length;
+
+          if (updatedCount > 0) {
+            console.log(`已更新 ${updatedCount} 条消息为已读状态`);
+          }
+
+          return updated;
+        });
+      }
+    );
 
     socket.on("messages:list", (msgs: Message[]) => {
       console.log("收到历史消息列表，数量:", msgs?.length ?? 0);

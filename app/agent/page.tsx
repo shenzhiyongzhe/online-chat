@@ -199,7 +199,10 @@ export default function AgentChatPage() {
 
           if (!isSentByMe) {
             try {
-              socketService.emit("messages:read", message.conversationId);
+              // Use setTimeout to ensure message is fully processed before marking as read
+              setTimeout(() => {
+                socketService.emit("messages:read", message.conversationId);
+              }, 100);
             } catch {}
           }
         }
@@ -252,9 +255,22 @@ export default function AgentChatPage() {
     socket.on("message:status", (messageId: string, status: string) => {
       console.log("收到消息状态更新:", messageId, status);
       setMessages((prev) =>
-        prev.map((msg) =>
-          msg.id === messageId ? { ...msg, status: status as any } : msg
-        )
+        prev.map((msg) => {
+          if (msg.id === messageId) {
+            // Don't override read status with delivered status
+            if (msg.status === "read" && status === "delivered") {
+              console.log(
+                `消息 ${messageId} 已为已读状态，跳过delivered状态更新`
+              );
+              return msg;
+            }
+            console.log(
+              `更新消息 ${messageId} 状态: ${msg.status} -> ${status}`
+            );
+            return { ...msg, status: status as any };
+          }
+          return msg;
+        })
       );
     });
     // 监听已读状态更新

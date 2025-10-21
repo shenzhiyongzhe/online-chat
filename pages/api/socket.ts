@@ -325,14 +325,40 @@ export default async function SocketHandler(
         // 更新消息状态为已送达
         setTimeout(async () => {
           try {
-            await prisma.message.update({
+            // Check if message is already read before updating to delivered
+            const currentMessage = await prisma.message.findUnique({
               where: { id: created.id },
-              data: { status: "delivered" },
+              select: { status: true },
             });
 
-            created.status = "delivered";
-            messages.set(created.id, created);
-            io.emit("message:status", created.id, "delivered");
+            // Only update to delivered if not already read
+            if (currentMessage && currentMessage.status !== "read") {
+              await prisma.message.update({
+                where: { id: created.id },
+                data: { status: "delivered" },
+              });
+
+              created.status = "delivered";
+              messages.set(created.id, created);
+
+              // Send status update to both users in the conversation
+              if (conv.agentId) {
+                userManager.sendToUser(conv.agentId, "message:status", [
+                  created.id,
+                  "delivered",
+                ]);
+              }
+              if (conv.clientId) {
+                userManager.sendToUser(conv.clientId, "message:status", [
+                  created.id,
+                  "delivered",
+                ]);
+              }
+            } else {
+              console.log(
+                `消息 ${created.id} 已被标记为已读，跳过delivered状态更新`
+              );
+            }
           } catch (error) {
             console.error("更新消息状态失败:", error);
           }
