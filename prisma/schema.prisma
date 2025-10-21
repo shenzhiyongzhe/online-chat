@@ -1,0 +1,85 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// 客服模型
+model Agent {
+  id        String   @id @default(cuid())
+  agentId   String   @unique @map("agent_id") // 客服工号
+  password  String
+  name      String
+  avatar    String?  @default("/avatars/default.jpg")
+  isOnline  Boolean  @default(false) @map("is_online")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // 关联的会话
+  conversations Conversation[] @relation("AgentConversations")
+
+  @@map("agents")
+}
+
+// 客户模型
+model Client {
+  id        String   @id @default(cuid())
+  clientId  String   @unique @map("client_id") // 客户ID
+  name      String
+  isOnline  Boolean  @default(false) @map("is_online")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // 关联的会话
+  conversations Conversation[] @relation("ClientConversations")
+
+  @@map("clients")
+}
+
+// 会话模型
+model Conversation {
+  id           String   @id @default(cuid())
+  type         String   @default("agent") // agent, group
+  title        String?
+  isActive     Boolean  @default(true) @map("is_active")
+  lastMessage  String?  @map("last_message")
+  lastMessageTime DateTime? @map("last_message_time")
+  unreadCount  Int      @default(0) @map("unread_count")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // 关联的客服和客户
+  agentId   String? @map("agent_id")
+  agent     Agent?  @relation("AgentConversations", fields: [agentId], references: [agentId])
+  
+  clientId  String? @map("client_id")
+  client    Client? @relation("ClientConversations", fields: [clientId], references: [clientId])
+
+  // 关联的消息
+  messages Message[]
+
+  @@map("conversations")
+}
+
+// 消息模型
+model Message {
+  id             String   @id @default(cuid())
+  conversationId String   @map("conversation_id")
+  senderId       String   @map("sender_id")
+  content        String
+  type           String   @default("text") // text, emoji, image, file
+  status         String   @default("sent") // sending, sent, delivered, read
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  // 关联的会话
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@map("messages")
+}

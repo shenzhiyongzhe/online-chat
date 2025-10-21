@@ -1,103 +1,179 @@
-import Image from "next/image";
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { MessageCircle, ArrowRight } from "lucide-react";
+import { validateClientName } from "../lib/utils";
+import { socketService } from "../lib/socket";
+// 移除 Zustand store 依赖，使用本地状态管理
+import { CurrentUser } from "../types";
 
 export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [clientName, setClientName] = useState("");
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [error, setError] = useState("");
+  const router = useRouter();
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  // 本地状态管理 - 直接跳转，不需要全局状态
+  const setCurrentUser = (user: CurrentUser | null) => {
+    if (user) {
+      // 将用户信息保存到 localStorage
+      localStorage.setItem("clientNickname", user.name);
+      // 跳转到客户端页面
+      router.push("/client");
+    }
+  };
+
+  const setConnected = (connected: boolean) => {
+    // 主页面不需要连接状态管理
+  };
+
+  const handleStartChat = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!validateClientName(clientName)) {
+      setError("请输入2-20个字符的昵称");
+      return;
+    }
+
+    setIsConnecting(true);
+    setError("");
+
+    try {
+      // 设置当前用户
+      const currentUser: CurrentUser = {
+        id: `CLIENT_${Date.now()}`,
+        name: clientName.trim(),
+        role: "client",
+        isOnline: true,
+      };
+      setCurrentUser(currentUser);
+
+      // 连接Socket
+      const socket = socketService.connect();
+
+      // 监听连接事件
+      socket.on("connect", () => {
+        console.log("Connected to server");
+        setConnected(true);
+
+        // 连接成功后发送用户登录事件
+        socket.emit("user:login", currentUser);
+
+        // 请求客服列表
+        socket.emit("agents:list");
+
+        // 跳转到客户聊天界面
+        router.push("/client");
+      });
+
+      // 监听连接错误
+      socket.on("connect_error", (error) => {
+        setIsConnecting(false);
+        setError("连接失败，请重试");
+      });
+    } catch (err) {
+      setIsConnecting(false);
+      setError("连接失败，请重试");
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+      <div className="max-w-md w-full space-y-8">
+        {/* 头部 */}
+        <div className="text-center">
+          <div className="flex justify-center mb-4">
+            <div className="p-3 bg-blue-600 rounded-full">
+              <MessageCircle className="h-8 w-8 text-white" />
+            </div>
+          </div>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">在线客服</h1>
+          <p className="text-gray-600">输入您的昵称，开始与客服对话</p>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+
+        {/* 表单区域 */}
+        <div className="bg-white rounded-2xl shadow-xl p-8 space-y-6">
+          <form onSubmit={handleStartChat} className="space-y-6">
+            {/* 客户昵称输入 */}
+            <div className="space-y-2">
+              <label
+                htmlFor="clientName"
+                className="block text-sm font-medium text-gray-700"
+              >
+                您的昵称
+              </label>
+              <input
+                id="clientName"
+                type="text"
+                value={clientName}
+                onChange={(e) => setClientName(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                maxLength={20}
+                placeholder="请输入您的昵称"
+                disabled={isConnecting}
+              />
+              <p className="text-xs text-gray-500">
+                2-20个字符，支持中英文、数字
+              </p>
+            </div>
+
+            {/* 错误提示 */}
+            {error && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                <p className="text-sm text-red-600">{error}</p>
+              </div>
+            )}
+
+            {/* 开始聊天按钮 */}
+            <button
+              type="submit"
+              disabled={isConnecting || !clientName.trim()}
+              className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center space-x-2"
+            >
+              {isConnecting ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  <span>连接中...</span>
+                </>
+              ) : (
+                <>
+                  <span>开始聊天</span>
+                  <ArrowRight className="h-4 w-4" />
+                </>
+              )}
+            </button>
+          </form>
+
+          {/* 客服登录链接 */}
+          <div className="text-center">
+            <p className="text-sm text-gray-500">
+              您是客服？{" "}
+              <a
+                href="/admin"
+                className="text-blue-600 hover:text-blue-700 font-medium transition-colors"
+              >
+                点击这里登录
+              </a>
+            </p>
+          </div>
+        </div>
+
+        {/* 特性介绍 */}
+        <div className="grid grid-cols-1 gap-4 text-center">
+          <div className="bg-white/50 backdrop-blur-sm rounded-lg p-4">
+            <h3 className="font-medium text-gray-900 mb-1">实时对话</h3>
+            <p className="text-sm text-gray-600">
+              与客服实时沟通，快速解决问题
+            </p>
+          </div>
+          <div className="bg-white/50 backdrop-blur-sm rounded-lg p-4">
+            <h3 className="font-medium text-gray-900 mb-1">专业服务</h3>
+            <p className="text-sm text-gray-600">
+              专业客服团队为您提供优质服务
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

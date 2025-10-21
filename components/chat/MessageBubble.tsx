@@ -1,0 +1,84 @@
+import { Message } from "../../types";
+import { formatMessageTime } from "../../lib/utils";
+import { Check, CheckCheck } from "lucide-react";
+
+interface MessageBubbleProps {
+  message: Message;
+  isOwn: boolean;
+  senderName: string;
+}
+
+export function MessageBubble({
+  message,
+  isOwn,
+  senderName,
+}: MessageBubbleProps) {
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case "sending":
+        return (
+          <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse" />
+        );
+      case "sent":
+        return <Check className="w-3 h-3 text-gray-400" />;
+      case "delivered":
+        return <CheckCheck className="w-3 h-3 text-gray-400" />;
+      case "read":
+        return <CheckCheck className="w-3 h-3 text-blue-500" />;
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div className={`flex ${isOwn ? "justify-end" : "justify-start"} mb-4`}>
+      <div
+        className={`flex max-w-xs lg:max-w-md ${
+          isOwn ? "flex-row-reverse" : "flex-row"
+        }`}
+      >
+        {/* 头像 */}
+        <div className={`flex-shrink-0 ${isOwn ? "ml-3" : "mr-3"}`}>
+          <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center">
+            <span className="text-sm font-medium text-gray-600">
+              {senderName.charAt(0).toUpperCase()}
+            </span>
+          </div>
+        </div>
+
+        {/* 消息内容 */}
+        <div className={`flex flex-col ${isOwn ? "items-end" : "items-start"}`}>
+          {/* 发送者姓名（仅非自己的消息显示） */}
+          {!isOwn && (
+            <span className="text-xs text-gray-500 mb-1">{senderName}</span>
+          )}
+
+          {/* 消息气泡 */}
+          <div
+            className={`px-4 py-2 rounded-2xl ${
+              isOwn
+                ? "bg-blue-500 text-white rounded-br-md"
+                : "bg-gray-100 text-gray-900 rounded-bl-md"
+            }`}
+          >
+            <p className="text-sm whitespace-pre-wrap break-words">
+              {message.content}
+            </p>
+          </div>
+
+          {/* 时间和状态 */}
+          <div
+            className={`flex items-center mt-1 space-x-1 ${
+              isOwn ? "flex-row-reverse space-x-reverse" : ""
+            }`}
+          >
+            <span className="text-xs text-gray-500">
+              {formatMessageTime(message.timestamp)}
+            </span>
+            {isOwn && getStatusIcon(message.status)}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
