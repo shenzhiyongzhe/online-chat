@@ -17,12 +17,26 @@ export default function AdminMonitorPage() {
   const [selectedConversation, setSelectedConversation] =
     useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [conversationMessages, setConversationMessages] = useState<
+    Record<string, Message[]>
+  >({});
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
 
   // Auto scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // 同步当前选中会话的消息
+  useEffect(() => {
+    if (selectedConversation) {
+      const conversationMessagesList =
+        conversationMessages[selectedConversation.id] || [];
+      setMessages(conversationMessagesList);
+    } else {
+      setMessages([]);
+    }
+  }, [selectedConversation, conversationMessages]);
 
   // Socket connection and admin setup
   useEffect(() => {
@@ -67,12 +81,11 @@ export default function AdminMonitorPage() {
       "admin:messages",
       (data: { conversationId: string; messages: Message[] }) => {
         console.log("收到会话消息:", data);
-        if (
-          selectedConversation &&
-          data.conversationId === selectedConversation.id
-        ) {
-          setMessages(data.messages);
-        }
+        // 为每个会话独立存储消息
+        setConversationMessages((prev) => ({
+          ...prev,
+          [data.conversationId]: data.messages,
+        }));
       }
     );
 
@@ -93,18 +106,20 @@ export default function AdminMonitorPage() {
             (prev[messageData.conversation.id] || 0) + 1,
         }));
 
-        // If this message is for the currently selected conversation, add it to messages
-        if (
-          selectedConversation &&
-          messageData.conversation.id === selectedConversation.id
-        ) {
-          setMessages((prev) => {
-            // Check for duplicates
-            const exists = prev.find((m) => m.id === messageData.id);
-            if (exists) return prev;
-            return [...prev, messageData];
-          });
-        }
+        // 为每个会话独立添加消息
+        setConversationMessages((prev) => {
+          const conversationId = messageData.conversation.id;
+          const existingMessages = prev[conversationId] || [];
+
+          // 检查重复消息
+          const exists = existingMessages.find((m) => m.id === messageData.id);
+          if (exists) return prev;
+
+          return {
+            ...prev,
+            [conversationId]: [...existingMessages, messageData],
+          };
+        });
 
         // Update conversation list with latest message
         setConversations((prev) =>
@@ -130,7 +145,6 @@ export default function AdminMonitorPage() {
   // Handle conversation selection
   const handleSelectConversation = (conversation: Conversation) => {
     setSelectedConversation(conversation);
-    setMessages([]);
 
     // Clear unread count for selected conversation
     setUnreadCounts((prev) => ({
@@ -138,8 +152,10 @@ export default function AdminMonitorPage() {
       [conversation.id]: 0,
     }));
 
-    // Get messages for this conversation
-    socketService.emit("admin:get-room-messages", conversation.id);
+    // 如果该会话还没有消息，则请求消息
+    if (!conversationMessages[conversation.id]) {
+      socketService.emit("admin:get-room-messages", conversation.id);
+    }
   };
 
   // Get conversation display name
@@ -157,6 +173,11 @@ export default function AdminMonitorPage() {
       return conversation.client?.name || "客户";
     }
     return "未知";
+  };
+
+  // Check if message is from agent (for layout purposes)
+  const isMessageFromAgent = (message: Message, conversation: Conversation) => {
+    return message.senderId === conversation.agentId;
   };
 
   if (isLoading) {
@@ -323,14 +344,25 @@ export default function AdminMonitorPage() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {messages.map((message) => (
-                    <MessageBubble
-                      key={message.id}
-                      message={message}
-                      isOwn={false} // Admin view, so no "own" messages
-                      senderName={getSenderName(message, selectedConversation)}
-                    />
-                  ))}
+                  {messages.map((message, index) => {
+                    const senderName = getSenderName(
+                      message,
+                      selectedConversation
+                    );
+                    const isFromAgent = isMessageFromAgent(
+                      message,
+                      selectedConversation
+                    );
+                    return (
+                      <MessageBubble
+                        key={`${message.id}-${index}`}
+                        message={message}
+                        isOwn={!isFromAgent}
+                        senderName={senderName || "客服"}
+                      />
+                    );
+                  })}
+
                   <div ref={messagesEndRef} />
                 </div>
               )}

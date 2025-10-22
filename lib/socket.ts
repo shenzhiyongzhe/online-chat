@@ -9,8 +9,8 @@ class SocketService {
     this.url =
       process.env.NEXT_PUBLIC_SOCKET_URL ||
       (typeof window !== "undefined"
-        ? window.location.origin
-        : "http://localhost:3000");
+        ? window.location.origin // 使用当前页面的端口
+        : "http://localhost:4000");
   }
 
   connect(): Socket {
@@ -39,10 +39,14 @@ class SocketService {
 
     console.log("🔌 尝试连接到 WebSocket:", this.url);
     console.log("🔌 完整连接 URL:", `${this.url}/api/socket`);
+    console.log(
+      "🔌 当前页面URL:",
+      typeof window !== "undefined" ? window.location.origin : "N/A"
+    );
 
     this.socket = io(this.url, {
       path: "/api/socket",
-      transports: ["websocket", "polling"], // 优先使用websocket
+      transports: ["polling", "websocket"], // 优先使用websocket
       autoConnect: true,
       forceNew: false, // 不强制创建新连接
       timeout: 20000,
@@ -50,6 +54,8 @@ class SocketService {
       reconnectionAttempts: 5, // 最多重连5次
       reconnectionDelay: 1000, // 重连延迟1秒
       reconnectionDelayMax: 5000, // 最大重连延迟5秒
+      upgrade: true, // 允许升级到websocket
+      rememberUpgrade: true, // 记住升级状态
     });
 
     // 添加连接事件监听

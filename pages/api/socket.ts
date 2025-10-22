@@ -120,7 +120,6 @@ export default async function SocketHandler(
     return;
   }
 
-  console.log("Socket is initializing (fixed version)");
   const io = new SocketIOServer(res.socket.server, {
     path: "/api/socket",
     cors: {
