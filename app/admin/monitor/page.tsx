@@ -161,8 +161,12 @@ export default function AdminMonitorPage() {
   // Get conversation display name
   const getConversationDisplayName = (conversation: Conversation) => {
     const agentName = conversation.agent?.name || "未知客服";
-    const clientName = conversation.client?.name || "未知客户";
-    return `${agentName} ↔ ${clientName}`;
+    // 如果有自定义显示名称，使用自定义名称，否则使用原始名称
+    const clientName =
+      conversation.clientDisplayName || conversation.client?.name || "未知客户";
+    const clientPhone = conversation.client?.phone || "";
+    const phoneDisplay = clientPhone ? ` (${clientPhone})` : "";
+    return `${agentName} ↔ ${clientName}${phoneDisplay}`;
   };
 
   // Get sender name for message

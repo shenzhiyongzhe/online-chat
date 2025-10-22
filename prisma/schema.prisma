@@ -32,6 +32,7 @@ model Client {
   id        String   @id @default(cuid())
   clientId  String   @unique @map("client_id") // 客户ID
   name      String
+  phone     String   @default("") // 客户电话
   isOnline  Boolean  @default(false) @map("is_online")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -51,6 +52,7 @@ model Conversation {
   lastMessage  String?  @map("last_message")
   lastMessageTime DateTime? @map("last_message_time")
   unreadCount  Int      @default(0) @map("unread_count")
+  clientDisplayName String?  @map("client_display_name") // 客服对客户的自定义显示名称
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 

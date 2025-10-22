@@ -19,6 +19,7 @@ export interface Client {
   id: string;
   clientId?: string;
   name: string;
+  phone: string;
   isOnline: boolean;
 }
 
@@ -39,6 +40,7 @@ export interface Conversation {
   lastMessage?: string;
   lastMessageTime?: string;
   isActive?: boolean;
+  clientDisplayName?: string; // 客服对客户的自定义显示名称
   // Include related data for admin monitoring
   agent?: Agent;
   client?: Client;

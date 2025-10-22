@@ -170,17 +170,23 @@ export default async function SocketHandler(
             // 继续执行，不中断流程
           }
         } else if (user.role === "client") {
+          // 从clientId中提取name和phone (格式: CLIENT_name_phone)
+          const clientIdParts = user.id.split("_");
+          const clientName = clientIdParts[1] || user.name;
+          const clientPhone = clientIdParts[2] || "";
+
           // 创建或更新客户
           await prisma.client.upsert({
             where: { clientId: user.id },
-            update: { isOnline: true, name: user.name },
+            update: { isOnline: true, name: clientName, phone: clientPhone },
             create: {
               clientId: user.id,
-              name: user.name,
+              name: clientName,
+              phone: clientPhone,
               isOnline: true,
             },
           });
-          console.log(`客户 ${user.name} 上线`);
+          console.log(`客户 ${clientName} (${clientPhone}) 上线`);
         }
 
         // 从数据库获取客服列表
@@ -220,7 +226,12 @@ export default async function SocketHandler(
       console.log("获取会话历史消息:", conversationId);
       try {
         const messages = await prisma.message.findMany({
-          where: { conversationId },
+          where: {
+            conversationId,
+            createdAt: {
+              gte: new Date(Date.now() - 48 * 60 * 60 * 1000), // 48小时内
+            },
+          },
           orderBy: { createdAt: "desc" }, // 按时间倒序，获取最新消息
           take: 100, // 限制返回最近100条消息
           select: {
@@ -609,6 +620,7 @@ export default async function SocketHandler(
             id: true,
             clientId: true,
             name: true,
+            phone: true,
             isOnline: true,
           },
         });
@@ -634,7 +646,19 @@ export default async function SocketHandler(
       try {
         const conversations = await prisma.conversation.findMany({
           where: { isActive: true },
-          include: {
+          select: {
+            id: true,
+            type: true,
+            title: true,
+            isActive: true,
+            lastMessage: true,
+            lastMessageTime: true,
+            unreadCount: true,
+            clientDisplayName: true,
+            createdAt: true,
+            updatedAt: true,
+            agentId: true,
+            clientId: true,
             agent: {
               select: {
                 id: true,
@@ -648,6 +672,7 @@ export default async function SocketHandler(
                 id: true,
                 clientId: true,
                 name: true,
+                phone: true,
                 isOnline: true,
               },
             },
@@ -666,7 +691,12 @@ export default async function SocketHandler(
       console.log("管理员获取会话消息:", conversationId);
       try {
         const messages = await prisma.message.findMany({
-          where: { conversationId },
+          where: {
+            conversationId,
+            createdAt: {
+              gte: new Date(Date.now() - 48 * 60 * 60 * 1000), // 48小时内
+            },
+          },
           orderBy: { createdAt: "asc" },
           select: {
             id: true,

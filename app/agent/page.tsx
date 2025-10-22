@@ -35,6 +35,11 @@ export default function AgentChatPage() {
     }>
   >([]);
 
+  // Client display name functionality
+  const [showDisplayNameModal, setShowDisplayNameModal] = useState(false);
+  const [displayName, setDisplayName] = useState("");
+  const [isSavingDisplayName, setIsSavingDisplayName] = useState(false);
+
   // 本地状态管理函数
   const setConnected = (connected: boolean) => {
     setIsConnected(connected);
@@ -96,6 +101,67 @@ export default function AgentChatPage() {
     setNotifications((prev) =>
       prev.filter((n) => n.message.id !== notificationId)
     );
+  };
+
+  // 处理打开自定义昵称模态框
+  const handleOpenDisplayName = async () => {
+    if (!currentConversation) return;
+
+    try {
+      const response = await fetch(
+        `/api/conversations/${currentConversation.id}/notes`
+      );
+      const data = await response.json();
+
+      if (data.success) {
+        setDisplayName(data.clientDisplayName || "");
+        setShowDisplayNameModal(true);
+      } else {
+        console.error("获取自定义昵称失败:", data.message);
+      }
+    } catch (error) {
+      console.error("获取自定义昵称失败:", error);
+    }
+  };
+
+  // 处理保存自定义昵称
+  const handleSaveDisplayName = async () => {
+    if (!currentConversation || !currentUser) return;
+
+    setIsSavingDisplayName(true);
+    try {
+      const response = await fetch(
+        `/api/conversations/${currentConversation.id}/notes`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            clientDisplayName: displayName,
+            agentId: currentUser.id,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (data.success) {
+        setShowDisplayNameModal(false);
+        // 更新当前会话的自定义昵称
+        setCurrentConversation((prev) =>
+          prev ? { ...prev, clientDisplayName: displayName } : null
+        );
+      } else {
+        console.error("保存自定义昵称失败:", data.message);
+        alert("保存自定义昵称失败: " + data.message);
+      }
+    } catch (error) {
+      console.error("保存自定义昵称失败:", error);
+      alert("保存自定义昵称失败");
+    } finally {
+      setIsSavingDisplayName(false);
+    }
   };
   // 检查用户是否已登录
   useEffect(() => {
@@ -492,9 +558,16 @@ export default function AgentChatPage() {
 
   const getCurrentChatPartner = () => {
     if (!currentConversation || !currentUser) return null;
+
+    // 如果有自定义显示名称，使用自定义名称，否则使用原始名称
+    const displayName =
+      currentConversation.clientDisplayName ||
+      `客户 ${currentConversation.clientId}`;
+
     return {
       id: currentConversation.clientId,
-      name: `客户 ${currentConversation.clientId}`,
+      name: displayName,
+      originalName: `客户 ${currentConversation.clientId}`,
       isOnline: true,
     };
   };
@@ -557,7 +630,7 @@ export default function AgentChatPage() {
           </div>
           <div className="text-sm text-gray-600 hidden md:block">
             {currentUser.name}
-            <div className="flex items-center space-x-2 hidden md:flex">
+            <div className="hidden md:flex items-center space-x-2">
               <div
                 className={`w-2 h-2 rounded-full ${
                   isConnected ? "bg-green-500" : "bg-gray-400"
@@ -703,11 +776,15 @@ export default function AgentChatPage() {
             <div className="p-4 border-b border-gray-200 bg-white">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-3">
-                  <div className="w-10 h-10 bg-gray-300 rounded-full flex items-center justify-center">
+                  <button
+                    onClick={handleOpenDisplayName}
+                    className="w-10 h-10 bg-gray-300 rounded-full flex items-center justify-center hover:bg-gray-400 transition-colors cursor-pointer"
+                    title="点击设置自定义昵称"
+                  >
                     <span className="text-sm font-medium text-gray-600">
                       {chatPartner.name.charAt(0)}
                     </span>
-                  </div>
+                  </button>
                   <div>
                     <h3 className="text-lg font-semibold text-gray-900">
                       {chatPartner.name}
@@ -715,6 +792,11 @@ export default function AgentChatPage() {
                     <div className="flex items-center space-x-1">
                       <div className="w-2 h-2 rounded-full bg-green-500" />
                       <span className="text-sm text-gray-500">在线</span>
+                      {currentConversation?.clientDisplayName && (
+                        <span className="text-xs text-blue-600 ml-2">
+                          ✏️ 自定义昵称
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -813,6 +895,71 @@ export default function AgentChatPage() {
           </div>
         ))}
       </div>
+
+      {/* 自定义昵称模态框 */}
+      {showDisplayNameModal && (
+        <div className="fixed inset-0 bg-gray-500 bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-medium text-gray-900">
+                  设置客户自定义昵称
+                </h3>
+                <button
+                  onClick={() => setShowDisplayNameModal(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <svg
+                    className="h-5 w-5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6">
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  原始名称: {chatPartner?.originalName}
+                </label>
+                <input
+                  type="text"
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="请输入自定义昵称..."
+                />
+                <p className="text-xs text-gray-500 mt-1">留空则使用原始名称</p>
+              </div>
+
+              <div className="flex items-center justify-end space-x-3">
+                <button
+                  onClick={() => setShowDisplayNameModal(false)}
+                  className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handleSaveDisplayName}
+                  disabled={isSavingDisplayName}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isSavingDisplayName ? "保存中..." : "保存"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

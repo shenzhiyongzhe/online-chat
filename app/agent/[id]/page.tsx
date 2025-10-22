@@ -21,6 +21,7 @@ export default function AgentRoomPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [showNicknameModal, setShowNicknameModal] = useState(false);
   const [nickname, setNickname] = useState("");
+  const [phone, setPhone] = useState("");
   const [nicknameError, setNicknameError] = useState("");
 
   // Local state management
@@ -33,11 +34,13 @@ export default function AgentRoomPage() {
   // Check for saved nickname and agent info on mount
   useEffect(() => {
     const savedNickname = localStorage.getItem("clientNickname");
-    if (savedNickname) {
+    const savedPhone = localStorage.getItem("clientPhone");
+    if (savedNickname && savedPhone) {
       setNickname(savedNickname);
-      // Create user immediately if nickname exists
+      setPhone(savedPhone);
+      // Create user immediately if nickname and phone exist
       const currentUser: CurrentUser = {
-        id: `CLIENT_${savedNickname}`,
+        id: `CLIENT_${savedNickname}_${savedPhone}`,
         name: savedNickname,
         role: "client",
         isOnline: true,
@@ -46,7 +49,7 @@ export default function AgentRoomPage() {
       // Trigger WebSocket connection after user is set
       setIsLoading(false);
     } else {
-      // Show nickname modal if no saved nickname
+      // Show nickname modal if no saved nickname or phone
       setShowNicknameModal(true);
       setIsLoading(false);
     }
@@ -294,13 +297,23 @@ export default function AgentRoomPage() {
       setNicknameError("昵称长度应在2-20个字符之间");
       return;
     }
+    if (!phone.trim()) {
+      setNicknameError("请输入手机号码");
+      return;
+    }
+    if (phone.trim().length < 10 || phone.trim().length > 15) {
+      setNicknameError("手机号码长度应在10-15位之间");
+      return;
+    }
 
     const trimmedNickname = nickname.trim();
+    const trimmedPhone = phone.trim();
     localStorage.setItem("clientNickname", trimmedNickname);
+    localStorage.setItem("clientPhone", trimmedPhone);
 
     // Create user immediately
     const currentUser: CurrentUser = {
-      id: `CLIENT_${trimmedNickname}`,
+      id: `CLIENT_${trimmedNickname}_${trimmedPhone}`,
       name: trimmedNickname,
       role: "client",
       isOnline: true,
@@ -364,10 +377,12 @@ export default function AgentRoomPage() {
   // Clear saved nickname
   const clearSavedNickname = () => {
     localStorage.removeItem("clientNickname");
+    localStorage.removeItem("clientPhone");
     setCurrentUser(null);
     setCurrentConversation(null);
     setMessages([]);
     setNickname("");
+    setPhone("");
     setShowNicknameModal(true);
   };
 
@@ -397,7 +412,9 @@ export default function AgentRoomPage() {
                   </div>
                   <div>
                     <h3 className="text-lg font-semibold text-gray-900">
-                      {agent?.name || "客服"}
+                      {(currentConversation as any)?.clientDisplayName ||
+                        agent?.name ||
+                        "客服"}
                     </h3>
                     <div className="flex items-center space-x-1">
                       <div
@@ -464,7 +481,9 @@ export default function AgentRoomPage() {
                   </div>
                   <div>
                     <h3 className="text-lg font-semibold text-gray-900">
-                      {agent?.name || "客服"}
+                      {(currentConversation as any)?.clientDisplayName ||
+                        agent?.name ||
+                        "客服"}
                     </h3>
                     <div className="flex items-center space-x-1">
                       <div
@@ -497,7 +516,11 @@ export default function AgentRoomPage() {
                   <p className="text-lg font-medium mb-2">开始对话</p>
                   <p className="text-sm">
                     {currentUser
-                      ? `与 ${agent?.name || "客服"} 开始聊天`
+                      ? `与 ${
+                          (currentConversation as any)?.clientDisplayName ||
+                          agent?.name ||
+                          "客服"
+                        } 开始聊天`
                       : "输入消息开始对话"}
                   </p>
                 </div>
@@ -531,9 +554,8 @@ export default function AgentRoomPage() {
                 <MessageCircle className="w-8 h-8 text-blue-600" />
               </div>
               <h2 className="text-2xl font-bold text-gray-900 mb-2">
-                欢迎使用在线客服
+                大大王在线
               </h2>
-              <p className="text-gray-600">请输入您的昵称开始对话</p>
             </div>
 
             <form onSubmit={handleNicknameSubmit} className="space-y-4">
@@ -554,6 +576,24 @@ export default function AgentRoomPage() {
                   maxLength={20}
                   autoFocus
                 />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="phone"
+                  className="block text-sm font-medium text-gray-700 mb-2"
+                >
+                  手机号码
+                </label>
+                <input
+                  id="phone"
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                  placeholder="请输入10-15位手机号码"
+                  maxLength={15}
+                />
                 {nicknameError && (
                   <p className="mt-2 text-sm text-red-600">{nicknameError}</p>
                 )}
@@ -563,7 +603,7 @@ export default function AgentRoomPage() {
                 type="submit"
                 className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
               >
-                确认昵称
+                确认信息
               </button>
             </form>
           </div>

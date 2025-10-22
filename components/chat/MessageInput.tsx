@@ -22,8 +22,8 @@ export function MessageInput({
     }
   };
 
-  const handleKeyPress = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+  const handleKeyPress = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && e.ctrlKey) {
       e.preventDefault();
       handleSend();
     }
@@ -33,14 +33,20 @@ export function MessageInput({
     <div className="p-4 border-t border-gray-200 bg-white">
       <div className="flex items-end space-x-3">
         <div className="flex-1">
-          <input
-            type="text"
+          <textarea
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             onKeyPress={handleKeyPress}
             placeholder={placeholder}
             disabled={disabled}
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none disabled:opacity-50 disabled:cursor-not-allowed"
+            rows={1}
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none disabled:opacity-50 disabled:cursor-not-allowed min-h-[48px] max-h-32"
+            style={{ height: "auto" }}
+            onInput={(e) => {
+              const target = e.target as HTMLTextAreaElement;
+              target.style.height = "auto";
+              target.style.height = Math.min(target.scrollHeight, 128) + "px";
+            }}
           />
         </div>
         <Button
