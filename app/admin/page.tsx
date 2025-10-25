@@ -183,33 +183,6 @@ export default function AdminLogin() {
               <p>用户名: 王五, 密码: 123456</p>
             </div>
           </div>
-
-          {/* 管理员功能 */}
-          <div className="space-y-3">
-            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-              <h3 className="text-sm font-medium text-green-800 mb-2">
-                实时监控
-              </h3>
-              <button
-                onClick={() => router.push("/admin/monitor")}
-                className="w-full bg-green-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-green-700 focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-all text-sm"
-              >
-                实时监控所有会话
-              </button>
-            </div>
-
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <h3 className="text-sm font-medium text-blue-800 mb-2">
-                Agent管理
-              </h3>
-              <button
-                onClick={() => router.push("/admin/agents")}
-                className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all text-sm"
-              >
-                管理Agent人员
-              </button>
-            </div>
-          </div>
         </div>
 
         {/* 返回首页 */}

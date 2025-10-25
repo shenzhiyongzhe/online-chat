@@ -49,7 +49,7 @@ model Conversation {
   type         String   @default("agent") // agent, group
   title        String?
   isActive     Boolean  @default(true) @map("is_active")
-  lastMessage  String?  @map("last_message")
+  lastMessage  String?  @map("last_message") @db.Text
   lastMessageTime DateTime? @map("last_message_time")
   unreadCount  Int      @default(0) @map("unread_count")
   clientDisplayName String?  @map("client_display_name") // 客服对客户的自定义显示名称
@@ -74,7 +74,7 @@ model Message {
   id             String   @id @default(cuid())
   conversationId String   @map("conversation_id")
   senderId       String   @map("sender_id")
-  content        String
+  content        String   @db.Text  
   type           String   @default("text") // text, emoji, image, file
   status         String   @default("sent") // sending, sent, delivered, read
   createdAt      DateTime @default(now()) @map("created_at")

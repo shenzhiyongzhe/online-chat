@@ -200,7 +200,7 @@ export default function AdminMonitorPage() {
       {/* Left sidebar - Conversations list */}
       <div className="w-80 flex-shrink-0 bg-white border-r border-gray-200 flex flex-col">
         {/* Header */}
-        <div className="p-4 border-b border-gray-200">
+        <div className="p-4 border-b border-gray-200 ">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center space-x-2">
               <Eye className="w-5 h-5 text-blue-600" />
@@ -218,8 +218,14 @@ export default function AdminMonitorPage() {
             </div>
           </div>
           <button
+            onClick={() => router.push("/admin/agents")}
+            className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all text-sm"
+          >
+            管理Agent人员
+          </button>
+          <button
             onClick={() => router.push("/admin")}
-            className="flex items-center text-sm text-gray-600 hover:text-gray-800"
+            className="flex items-center text-sm text-gray-600 hover:text-gray-800 mt-2"
           >
             <ArrowLeft className="w-4 h-4 mr-1" />
             返回登录

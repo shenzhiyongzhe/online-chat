@@ -12,6 +12,7 @@ export default async function handler(
       const agents = await prisma.agent.findMany({
         select: {
           id: true,
+          agentId: true,
           name: true,
           password: true,
           isOnline: true,
@@ -37,13 +38,13 @@ export default async function handler(
   } else if (req.method === "POST") {
     // 创建新agent
     try {
-      const { name, password } = req.body;
+      const { agentId, name, password } = req.body;
 
       // 验证输入
-      if (!name || !password) {
+      if (!agentId || !name || !password) {
         return res.status(400).json({
           success: false,
-          message: "名称和密码不能为空",
+          message: "ID、名称和密码不能为空",
         });
       }
 
@@ -61,17 +62,26 @@ export default async function handler(
         });
       }
 
-      // 生成agentId（使用时间戳+随机数）
-      const agentId = `AGENT_${Date.now()}_${Math.random()
-        .toString(36)
-        .substr(2, 9)}`;
+      // 使用提供的agentId
+
+      // 检查ID是否已存在
+      const existingAgentById = await prisma.agent.findFirst({
+        where: { agentId },
+      });
+
+      if (existingAgentById) {
+        return res.status(400).json({
+          success: false,
+          message: "该ID已存在",
+        });
+      }
 
       // 检查名称是否已存在
-      const existingAgent = await prisma.agent.findFirst({
+      const existingAgentByName = await prisma.agent.findFirst({
         where: { name },
       });
 
-      if (existingAgent) {
+      if (existingAgentByName) {
         return res.status(400).json({
           success: false,
           message: "该名称已存在",
@@ -91,6 +101,7 @@ export default async function handler(
         },
         select: {
           id: true,
+          agentId: true,
           name: true,
           password: true,
           isOnline: true,

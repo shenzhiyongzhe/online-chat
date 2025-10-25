@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 
 interface Agent {
-  id: string;
+  agentId: string;
   name: string;
   password?: string;
   isOnline?: boolean;
@@ -37,6 +37,7 @@ export default function AgentManagementPage() {
 
   // 表单状态
   const [formData, setFormData] = useState({
+    agentId: "",
     name: "",
     password: "",
     confirmPassword: "",
@@ -77,6 +78,11 @@ export default function AgentManagementPage() {
     setFormError("");
 
     // 验证表单
+    if (!formData.agentId.trim()) {
+      setFormError("请输入agent ID");
+      return;
+    }
+
     if (!formData.name.trim()) {
       setFormError("请输入agent名称");
       return;
@@ -99,7 +105,7 @@ export default function AgentManagementPage() {
 
     try {
       const url = editingAgent
-        ? `/api/agents/${editingAgent.id}`
+        ? `/api/agents/${editingAgent.agentId}`
         : "/api/agents";
       const method = editingAgent ? "PUT" : "POST";
 
@@ -109,6 +115,7 @@ export default function AgentManagementPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          agentId: formData.agentId.trim(),
           name: formData.name.trim(),
           password: formData.password,
         }),
@@ -137,7 +144,7 @@ export default function AgentManagementPage() {
     }
 
     try {
-      const response = await fetch(`/api/agents/${agent.id}`, {
+      const response = await fetch(`/api/agents/${agent.agentId}`, {
         method: "DELETE",
       });
 
@@ -157,6 +164,7 @@ export default function AgentManagementPage() {
   // 重置表单
   const resetForm = () => {
     setFormData({
+      agentId: "",
       name: "",
       password: "",
       confirmPassword: "",
@@ -170,9 +178,10 @@ export default function AgentManagementPage() {
   const startEdit = (agent: Agent) => {
     setEditingAgent(agent);
     setFormData({
+      agentId: agent.agentId,
       name: agent.name,
-      password: "",
-      confirmPassword: "",
+      password: agent.password || "",
+      confirmPassword: agent.password || "",
     });
     setFormError("");
   };
@@ -204,11 +213,11 @@ export default function AgentManagementPage() {
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center space-x-4">
               <button
-                onClick={() => router.push("/admin")}
+                onClick={() => router.push("/admin/monitor")}
                 className="flex items-center text-gray-600 hover:text-gray-800"
               >
                 <ArrowLeft className="h-5 w-5 mr-2" />
-                返回登录
+                Monitor页面
               </button>
               <div className="h-6 w-px bg-gray-300"></div>
               <div className="flex items-center space-x-2">
@@ -277,7 +286,7 @@ export default function AgentManagementPage() {
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {filteredAgents.map((agent) => (
-                    <tr key={agent.id} className="hover:bg-gray-50">
+                    <tr key={agent.agentId} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center">
                           <div className="h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
@@ -290,7 +299,7 @@ export default function AgentManagementPage() {
                               {agent.name}
                             </div>
                             <div className="text-sm text-gray-500">
-                              ID: {agent.id}
+                              ID: {agent.agentId}
                             </div>
                           </div>
                         </div>
@@ -298,15 +307,17 @@ export default function AgentManagementPage() {
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center space-x-2">
                           <span className="text-sm text-gray-900 font-mono">
-                            {showPasswords[agent.id]
+                            {showPasswords[agent.agentId]
                               ? agent.password
                               : "••••••••"}
                           </span>
                           <button
-                            onClick={() => togglePasswordVisibility(agent.id)}
+                            onClick={() =>
+                              togglePasswordVisibility(agent.agentId)
+                            }
                             className="text-gray-400 hover:text-gray-600"
                           >
-                            {showPasswords[agent.id] ? (
+                            {showPasswords[agent.agentId] ? (
                               <EyeOff className="h-4 w-4" />
                             ) : (
                               <Eye className="h-4 w-4" />
@@ -357,7 +368,7 @@ export default function AgentManagementPage() {
 
       {/* 添加/编辑表单模态框 */}
       {(showAddForm || editingAgent) && (
-        <div className="fixed inset-0 bg-gray-500 bg-opacity-50 flex items-center justify-center z-50">
+        <div className="fixed inset-0  bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
             <div className="px-6 py-4 border-b border-gray-200">
               <div className="flex items-center justify-between">
@@ -374,6 +385,22 @@ export default function AgentManagementPage() {
             </div>
 
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Agent ID
+                </label>
+                <input
+                  type="text"
+                  value={formData.agentId}
+                  onChange={(e) =>
+                    setFormData({ ...formData, agentId: e.target.value })
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="请输入agent ID"
+                  required
+                />
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Agent名称

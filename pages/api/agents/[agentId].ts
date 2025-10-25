@@ -6,9 +6,9 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
-  const { id } = req.query;
+  const { agentId } = req.query;
 
-  if (!id || typeof id !== "string") {
+  if (!agentId || typeof agentId !== "string") {
     return res.status(400).json({
       success: false,
       message: "无效的agent ID",
@@ -18,13 +18,13 @@ export default async function handler(
   if (req.method === "PUT") {
     // 更新agent
     try {
-      const { name, password } = req.body;
+      const { agentId: newAgentId, name, password } = req.body;
 
       // 验证输入
-      if (!name) {
+      if (!newAgentId || !name) {
         return res.status(400).json({
           success: false,
-          message: "名称不能为空",
+          message: "ID和名称不能为空",
         });
       }
 
@@ -38,7 +38,7 @@ export default async function handler(
       // 检查agent是否存在
       const existingAgent = await prisma.agent.findFirst({
         where: {
-          OR: [{ id }, { agentId: id }],
+          agentId: agentId,
         },
       });
 
@@ -46,6 +46,21 @@ export default async function handler(
         return res.status(404).json({
           success: false,
           message: "Agent不存在",
+        });
+      }
+
+      // 检查新ID是否被其他agent使用
+      const idConflict = await prisma.agent.findFirst({
+        where: {
+          agentId: newAgentId,
+          id: { not: existingAgent.id },
+        },
+      });
+
+      if (idConflict) {
+        return res.status(400).json({
+          success: false,
+          message: "该ID已被其他agent使用",
         });
       }
 
@@ -66,6 +81,7 @@ export default async function handler(
 
       // 准备更新数据
       const updateData: any = {
+        agentId: newAgentId,
         name,
       };
 
@@ -86,6 +102,7 @@ export default async function handler(
         data: updateData,
         select: {
           id: true,
+          agentId: true,
           name: true,
           password: true,
           isOnline: true,
@@ -112,7 +129,7 @@ export default async function handler(
       // 检查agent是否存在
       const existingAgent = await prisma.agent.findFirst({
         where: {
-          OR: [{ id }, { agentId: id }],
+          agentId: agentId,
         },
       });
 
