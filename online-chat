@@ -1,9 +1,30 @@
+
+# 根域名重定向到www
+server {
+    listen 80;
+    server_name xinde8888.com;
+    return 301 https://www.xinde8888.com$request_uri;
+}
+
+# www域名的HTTP配置
+server {
+    listen 80;
+    server_name www.xinde8888.com;
+    return 301 https://www.xinde8888.com$request_uri;
+}
 server {
     listen 443 ssl;
     http2 on;
     ssl_certificate /etc/nginx/cert/www.xinde8888.com.pem;
     ssl_certificate_key /etc/nginx/cert/www.xinde8888.com.key;
-    server_name www.xinde8888.com;
+    server_name xinde8888.com www.xinde8888.com;
+    
+    # SSL 配置优化，兼容更多浏览器
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384';
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 10m;
 
     access_log /var/log/nginx/online-chat-access.log;
     error_log /var/log/nginx/online-chat-error.log;

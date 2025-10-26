@@ -14,6 +14,7 @@ export default function AgentChatPage() {
   const router = useRouter();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const socketInitializedRef = useRef(false);
+
   const [isConnected, setIsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   // 移动端侧边栏状态
@@ -35,15 +36,10 @@ export default function AgentChatPage() {
     }>
   >([]);
 
-  // Client display name functionality
+  // 自定义昵称模态框相关状态
   const [showDisplayNameModal, setShowDisplayNameModal] = useState(false);
   const [displayName, setDisplayName] = useState("");
   const [isSavingDisplayName, setIsSavingDisplayName] = useState(false);
-
-  // 本地状态管理函数
-  const setConnected = (connected: boolean) => {
-    setIsConnected(connected);
-  };
 
   const updateConversation = (
     conversationId: string,
@@ -210,7 +206,6 @@ export default function AgentChatPage() {
     socket.on("connect", () => {
       console.log("Agent connected to server");
       setIsConnected(true);
-      setConnected(true);
       console.log("currentUser", JSON.stringify(currentUser));
       socket.emit("user:login", currentUser);
       socket.emit("agents:list");
@@ -220,7 +215,6 @@ export default function AgentChatPage() {
     socket.on("disconnect", () => {
       console.log("Agent disconnected from server");
       setIsConnected(false);
-      setConnected(false);
     });
 
     socket.on("message:receive", (message: Message & { tempId?: string }) => {
@@ -327,27 +321,31 @@ export default function AgentChatPage() {
       });
     });
 
-    socket.on("message:status", (messageId: string, status: string) => {
-      console.log("收到消息状态更新:", messageId, status);
-      setMessages((prev) =>
-        prev.map((msg) => {
-          if (msg.id === messageId) {
-            // Don't override read status with delivered status
-            if (msg.status === "read" && status === "delivered") {
+    socket.on(
+      "message:status",
+      (data: { messageId: string; status: string }) => {
+        const { messageId, status } = data;
+        console.log("收到消息状态更新:", JSON.stringify(data));
+        setMessages((prev) =>
+          prev.map((msg) => {
+            if (msg.id === data.messageId) {
+              // Don't override read status with delivered status
+              if (msg.status === "read" && status === "delivered") {
+                console.log(
+                  `消息 ${messageId} 已为已读状态，跳过delivered状态更新`
+                );
+                return msg;
+              }
               console.log(
-                `消息 ${messageId} 已为已读状态，跳过delivered状态更新`
+                `更新消息 ${messageId} 状态: ${msg.status} -> ${status}`
               );
-              return msg;
+              return { ...msg, status: status as any };
             }
-            console.log(
-              `更新消息 ${messageId} 状态: ${msg.status} -> ${status}`
-            );
-            return { ...msg, status: status as any };
-          }
-          return msg;
-        })
-      );
-    });
+            return msg;
+          })
+        );
+      }
+    );
     // 监听已读状态更新
     socket.on(
       "messages:read",
@@ -443,14 +441,70 @@ export default function AgentChatPage() {
   const handleSendMessage = (content: string) => {
     if (!currentConversation || !currentUser) return;
 
-    const payload: Omit<Message, "id" | "timestamp" | "status"> = {
+    // 生成临时 id，用于乐观渲染
+    const tempId = generateId();
+
+    const optimistic: Message = {
+      id: tempId,
       conversationId: currentConversation.id,
       senderId: currentUser.id,
       content,
       type: "text",
+      status: "sending" as any,
+      timestamp: new Date().toISOString(),
+    } as any;
+
+    // 先乐观渲染
+    setMessages((prev) => [...prev, optimistic]);
+
+    // 发送到服务端，携带 tempId
+    const payload: any = {
+      conversationId: currentConversation.id,
+      senderId: currentUser.id,
+      content,
+      type: "text",
+      tempId,
     };
 
-    socketService.emit("message:send", payload);
+    // 如果 socket 没连上，则直接标记为 failed
+    if (!socketService.isConnected()) {
+      setMessages((prev) =>
+        prev.map((m) => (m.id === tempId ? { ...m, status: "failed" } : m))
+      );
+      return;
+    }
+
+    // 使用 socket.io ack 替代本地超时检测
+    socketService
+      .emitWithAck("message:send", payload, 8000)
+      .then((res) => {
+        if (res && res.success && res.message) {
+          const srvMsg: Message = res.message;
+          setMessages((prev) => {
+            const idx = prev.findIndex((m) => m.id === tempId);
+            if (idx !== -1) {
+              const copy = [...prev];
+              copy[idx] = srvMsg;
+              return copy;
+            }
+            return [...prev];
+          });
+        } else {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === tempId ? { ...m, status: "failed" as any } : m
+            )
+          );
+        }
+      })
+      .catch((err) => {
+        console.error("发送消息 ack 失败:", err);
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === tempId ? { ...m, status: "failed" as any } : m
+          )
+        );
+      });
 
     setConversations((prev) =>
       prev.map((conv) =>
@@ -464,6 +518,63 @@ export default function AgentChatPage() {
           : conv
       )
     );
+  };
+
+  // 重试发送（使用相同 tempId）
+  const handleRetryMessage = async (msg: Message) => {
+    if (!currentConversation || !currentUser) return;
+    const tempId = msg.id;
+    // update status to sending
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === tempId ? { ...m, status: "sending" as any } : m
+      )
+    );
+
+    // resend payload with same tempId
+    const payload: any = {
+      conversationId: msg.conversationId,
+      senderId: msg.senderId,
+      content: msg.content,
+      type: msg.type || "text",
+      tempId,
+    };
+
+    if (!socketService.isConnected()) {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === tempId ? { ...m, status: "failed" as any } : m
+        )
+      );
+      return;
+    }
+
+    try {
+      // use ack-based emit; server will return { success, message, tempId }
+      const ack: any = await socketService.emitWithAck(
+        "message:send",
+        payload,
+        8000
+      );
+
+      if (ack && ack.success && ack.message) {
+        const srvMsg = ack.message as Message;
+        setMessages((prev) => prev.map((m) => (m.id === tempId ? srvMsg : m)));
+      } else {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === tempId ? { ...m, status: "failed" as any } : m
+          )
+        );
+      }
+    } catch (err) {
+      console.error("重试发送失败:", err);
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === tempId ? { ...m, status: "failed" as any } : m
+        )
+      );
+    }
   };
 
   const handleSelectConversation = (conversation: Conversation) => {
@@ -830,6 +941,7 @@ export default function AgentChatPage() {
                           ? currentUser.name
                           : chatPartner.name
                       }
+                      onRetry={handleRetryMessage}
                     />
                   ))}
                   <div ref={messagesEndRef} />
@@ -843,6 +955,7 @@ export default function AgentChatPage() {
                 onSendMessage={handleSendMessage}
                 disabled={!isConnected}
                 placeholder={isConnected ? "输入消息..." : "连接中..."}
+                agentId={currentUser?.id}
               />
             </div>
           </>

@@ -3,11 +3,11 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams } from "next/navigation";
 import { MessageCircle, User, ArrowRight } from "lucide-react";
-import { MessageBubble } from "../../../components/chat/MessageBubble";
-import { MessageInput } from "../../../components/chat/MessageInput";
-import { socketService } from "../../../lib/socket";
-import { generateId } from "../../../lib/utils";
-import { Message, Conversation, Agent, CurrentUser } from "../../../types";
+import { MessageBubble } from "../../components/chat/MessageBubble";
+import { MessageInput } from "../../components/chat/MessageInput";
+import { socketService } from "../../lib/socket";
+import { generateId } from "../../lib/utils";
+import { Message, Conversation, Agent, CurrentUser } from "../../types";
 
 export default function AgentRoomPage() {
   const params = useParams();
@@ -118,71 +118,91 @@ export default function AgentRoomPage() {
       }
     });
 
-    socket.on("message:receive", (message: Message) => {
+    // 添加监听 agent 状态更新事件
+    socket.on(
+      "agent:status",
+      (agentStatus: { agentId: string; isOnline: boolean }) => {
+        console.log("收到 agent 状态更新:", agentStatus);
+        if (agentStatus.agentId === agentId) {
+          setAgent((prev) => {
+            if (prev) {
+              return { ...prev, isOnline: agentStatus.isOnline };
+            }
+            return prev;
+          });
+        }
+      }
+    );
+
+    socket.on("message:receive", (message: Message & { tempId?: string }) => {
       console.log("收到新消息:", message);
-      console.log("当前会话ID:", currentConversation?.id);
       console.log("消息会话ID:", message.conversationId);
       console.log(currentConversation);
 
-      // Get current user ID for comparison
-      const currentUserState = localStorage.getItem("clientNickname") || "null";
-      const currentUserId = currentUserState
-        ? `CLIENT_${currentUserState}`
-        : "";
+      setCurrentConversation({
+        id: message.conversationId,
+        updatedAt: new Date().toISOString(),
+        unreadCount: 0,
+      });
 
       // Show messages if they belong to current conversation OR if we don't have a conversation yet
       // This handles the case where messages arrive before conversation state is set
-      const shouldShowMessage =
-        !currentConversation ||
-        message.conversationId === currentConversation.id;
 
-      if (shouldShowMessage) {
-        setMessages((prev) => {
-          console.log("当前消息列表长度:", prev.length);
-          console.log("检查重复消息ID:", message.id);
+      setMessages((prev) => {
+        console.log("当前消息列表长度:", prev.length);
+        console.log("检查重复消息ID:", message.id);
 
-          const alreadyExists = prev.some((m) => m.id === message.id);
-          if (alreadyExists) {
-            console.log("消息已存在，跳过添加");
-            return prev;
-          }
-
-          console.log("添加新消息到列表");
-          return [...prev, message];
-        });
-
-        // Mark as read if not sent by current user
-        // Use setTimeout to ensure message is fully processed before marking as read
-        if (message.senderId !== currentUserId) {
-          setTimeout(() => {
-            socketService.emit("messages:read", message.conversationId);
-          }, 100);
+        const alreadyExists = prev.some((m) => m.id === message.id);
+        if (alreadyExists) {
+          console.log("消息已存在，跳过添加");
+          return prev;
         }
+        // 如果消息包含tempId，检查是否有对应的临时消息需要替换
+        if (message.tempId) {
+          const tempIndex = prev.findIndex((m) => m.id === message.tempId);
+          if (tempIndex !== -1) {
+            console.log("替换临时消息");
+            const copy = [...prev];
+            copy[tempIndex] = { ...message };
+            return copy;
+          }
+        }
+        console.log("添加新消息到列表");
+        return [...prev, message];
+      });
+
+      // Mark as read if not sent by current user
+      // Use setTimeout to ensure message is fully processed before marking as read
+      if (message.senderId !== currentUser?.id) {
+        setTimeout(() => {
+          socketService.emit("messages:read", message.conversationId);
+        }, 100);
       }
     });
 
-    socket.on("message:status", (messageId: string, status: string) => {
-      setMessages((prev) =>
-        prev.map((msg) => {
-          if (msg.id === messageId) {
-            // Don't override read status with delivered status
-            if (msg.status === "read" && status === "delivered") {
-              console.log(
-                `消息 ${messageId} 已为已读状态，跳过delivered状态更新`
-              );
-              return msg;
+    socket.on(
+      "message:status",
+      (data: { messageId: string; status: string }) => {
+        const { messageId, status } = data;
+        console.log("收到消息状态更新:", JSON.stringify(data));
+        setMessages((prev) =>
+          prev.map((msg) => {
+            if (msg.id === messageId) {
+              // Don't override read status with delivered status
+              if (msg.status === "read" && status === "delivered") {
+                console.log(
+                  `消息 ${messageId} 已为已读状态，跳过delivered状态更新`
+                );
+                return msg;
+              }
+              return { ...msg, status: status as any };
             }
-            console.log(
-              `更新消息 ${messageId} 状态: ${msg.status} -> ${status}`
-            );
-            return { ...msg, status: status as any };
-          }
-          return msg;
-        })
-      );
-    });
+            return msg;
+          })
+        );
+      }
+    );
 
-    // Listen for read status updates
     socket.on(
       "messages:read",
       (data: {
@@ -190,44 +210,17 @@ export default function AgentRoomPage() {
         readerId: string;
         timestamp: string;
       }) => {
-        console.log("收到已读状态更新:", data);
-
-        // Get current user ID for comparison
-        const currentUserState =
-          localStorage.getItem("clientNickname") || "null";
-        const currentUserId = currentUserState
-          ? `CLIENT_${currentUserState}`
-          : "";
-
-        // Update message status to read for messages in this conversation
-        // that are sent by the current user (because current user is the reader)
-        setMessages((prev) => {
-          const updated = prev.map((msg) => {
-            if (
-              msg.conversationId === data.conversationId &&
-              msg.senderId === currentUserId &&
-              msg.status !== "read"
-            ) {
-              console.log(
-                `更新消息 ${msg.id} 状态为已读，原状态: ${msg.status}`
-              );
-              return { ...msg, status: "read" as const };
-            }
-            return msg;
-          });
-
-          // Log how many messages were updated
-          const updatedCount = updated.filter(
-            (msg, index) =>
-              msg.status === "read" && prev[index].status !== "read"
-          ).length;
-
-          if (updatedCount > 0) {
-            console.log(`已更新 ${updatedCount} 条消息为已读状态`);
-          }
-
-          return updated;
-        });
+        console.log("收到已读事件:", data);
+        // 更新当前会话中的消息状态
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.conversationId === data.conversationId &&
+            msg.senderId === currentUser.id &&
+            msg.status !== "read"
+              ? { ...msg, status: "read" }
+              : msg
+          )
+        );
       }
     );
 
@@ -328,52 +321,74 @@ export default function AgentRoomPage() {
     // Conversation will be auto-created when agent info is available
   };
 
-  // Handle send message
   const handleSendMessage = (content: string) => {
-    console.log("handleSendMessage 被调用，内容:", content);
+    if (!currentConversation || !currentUser) return;
 
-    // Prevent duplicate calls
-    if (isSendingRef.current) {
-      console.log("正在发送消息，跳过重复调用");
-      return;
-    }
+    // 生成临时 id，用于乐观渲染
+    const tempId = generateId();
 
-    // Check if user has nickname, if not show modal
-    if (!currentUser) {
-      setShowNicknameModal(true);
-      return;
-    }
-
-    // If no conversation exists yet, store message as pending
-    if (!currentConversation) {
-      console.log("会话尚未创建，存储待发送消息");
-      const pendingMessage = {
-        content,
-      };
-      (window as any).pendingMessage = pendingMessage;
-      return;
-    }
-
-    // Set sending flag
-    isSendingRef.current = true;
-
-    // Send message normally - no optimistic update
-    const payload: Omit<Message, "id" | "timestamp" | "status"> = {
+    const optimistic: Message = {
+      id: tempId,
       conversationId: currentConversation.id,
       senderId: currentUser.id,
       content,
       type: "text",
+      status: "sending" as any,
+      timestamp: new Date().toISOString(),
+    } as any;
+
+    // 先乐观渲染
+    setMessages((prev) => [...prev, optimistic]);
+
+    // 发送到服务端，携带 tempId
+    const payload: any = {
+      conversationId: currentConversation.id,
+      senderId: currentUser.id,
+      content,
+      type: "text",
+      tempId,
     };
 
-    console.log("发送消息到服务端:", payload);
-    socketService.emit("message:send", payload);
+    // 如果 socket 没连上，则直接标记为 failed
+    if (!socketService.isConnected()) {
+      setMessages((prev) =>
+        prev.map((m) => (m.id === tempId ? { ...m, status: "failed" } : m))
+      );
+      return;
+    }
 
-    // Reset sending flag after a short delay
-    setTimeout(() => {
-      isSendingRef.current = false;
-    }, 1000);
+    // 使用 socket.io ack 替代本地超时检测
+    socketService
+      .emitWithAck("message:send", payload, 8000)
+      .then((res) => {
+        if (res && res.success && res.message) {
+          const srvMsg: Message = res.message;
+          setMessages((prev) => {
+            const idx = prev.findIndex((m) => m.id === tempId);
+            if (idx !== -1) {
+              const copy = [...prev];
+              copy[idx] = srvMsg;
+              return copy;
+            }
+            return [...prev];
+          });
+        } else {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === tempId ? { ...m, status: "failed" as any } : m
+            )
+          );
+        }
+      })
+      .catch((err) => {
+        console.error("发送消息 ack 失败:", err);
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === tempId ? { ...m, status: "failed" as any } : m
+          )
+        );
+      });
   };
-
   // Clear saved nickname
   const clearSavedNickname = () => {
     localStorage.removeItem("clientNickname");

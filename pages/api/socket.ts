@@ -8,7 +8,8 @@ const conversations = new Map();
 const messages = new Map();
 
 class UserManager {
-  private userSocketMap = new Map<string, string>(); // user.id -> socket.id
+  // 修改为支持多个 socket 连接
+  private userSocketMap = new Map<string, Set<string>>(); // user.id -> Set<socket.id>
   private socketUserMap = new Map<string, any>(); // socket.id -> user
   private io: SocketIOServer;
 
@@ -16,9 +17,15 @@ class UserManager {
     this.io = io;
   }
 
-  // User login
+  // User login - 支持多设备登录
   userLogin(socketId: string, user: any) {
-    this.userSocketMap.set(user.id, socketId);
+    // 如果用户不存在，创建新的 Set
+    if (!this.userSocketMap.has(user.id)) {
+      this.userSocketMap.set(user.id, new Set());
+    }
+
+    // 添加新的 socket 连接
+    this.userSocketMap.get(user.id)!.add(socketId);
     this.socketUserMap.set(socketId, user);
 
     // Join user-specific room for reliable message delivery
@@ -31,18 +38,37 @@ class UserManager {
         socket.join("room:admin-monitor");
       }
     }
+
+    console.log(
+      `用户 ${user.name} (${user.id}) 登录，当前连接数: ${
+        this.userSocketMap.get(user.id)?.size
+      }`
+    );
   }
 
-  // User logout
+  // User logout - 从集合中移除特定 socket
   userLogout(socketId: string) {
     const user = this.socketUserMap.get(socketId);
     if (user) {
-      this.userSocketMap.delete(user.id);
+      const socketSet = this.userSocketMap.get(user.id);
+      if (socketSet) {
+        socketSet.delete(socketId);
+
+        // 如果没有剩余连接，删除用户记录
+        if (socketSet.size === 0) {
+          this.userSocketMap.delete(user.id);
+          console.log(`用户 ${user.name} (${user.id}) 所有设备已离线`);
+        } else {
+          console.log(
+            `用户 ${user.name} (${user.id}) 设备断开，剩余连接数: ${socketSet.size}`
+          );
+        }
+      }
     }
     this.socketUserMap.delete(socketId);
   }
 
-  // Send message to user by room (most reliable)
+  // Send message to user by room (所有设备都会收到)
   sendToUser(userId: string, event: string, data: any) {
     this.io.to(`user:${userId}`).emit(event, data);
   }
@@ -52,9 +78,32 @@ class UserManager {
     return this.socketUserMap.get(socketId);
   }
 
-  // Check if user is online
+  // Check if user is online (至少有一个设备在线)
   isUserOnline(userId: string) {
-    return this.userSocketMap.has(userId);
+    const socketSet = this.userSocketMap.get(userId);
+    return socketSet ? socketSet.size > 0 : false;
+  }
+
+  // 获取用户的所有 socket 连接
+  getUserSockets(userId: string): Set<string> {
+    return this.userSocketMap.get(userId) || new Set();
+  }
+
+  // 获取用户的连接数
+  getUserConnectionCount(userId: string): number {
+    const socketSet = this.userSocketMap.get(userId);
+    return socketSet ? socketSet.size : 0;
+  }
+
+  // 获取用户的所有在线设备信息
+  getUserDevices(userId: string): Array<{ socketId: string; user: any }> {
+    const socketSet = this.userSocketMap.get(userId);
+    if (!socketSet) return [];
+
+    return Array.from(socketSet).map((socketId) => ({
+      socketId,
+      user: this.socketUserMap.get(socketId),
+    }));
   }
 }
 
@@ -162,6 +211,12 @@ export default async function SocketHandler(
               },
             });
             console.log(`客服 ${user.name} 上线`);
+
+            // 广播 agent 状态更新给所有客户端
+            io.emit("agent:status", {
+              agentId: user.id,
+              isOnline: true,
+            });
           } catch (error: any) {
             console.warn(
               `客服 ${user.id} 不存在，跳过数据库更新:`,
@@ -264,7 +319,7 @@ export default async function SocketHandler(
       }
     });
     // 发送消息
-    socket.on("message:send", async (messageData: any) => {
+    socket.on("message:send", async (messageData: any, ack: any) => {
       console.log("发送消息:", JSON.stringify(messageData));
 
       try {
@@ -309,6 +364,8 @@ export default async function SocketHandler(
           timestamp: created.createdAt
             ? created.createdAt.toISOString()
             : new Date().toISOString(),
+          // 回传客户端发送时提供的临时 id，便于客户端替换乐观消息
+          tempId: messageData?.tempId || undefined,
         };
 
         // 更新会话的最后消息
@@ -327,6 +384,13 @@ export default async function SocketHandler(
         if (conv.clientId) {
           userManager.sendToUser(conv.clientId, "message:receive", outgoing);
         }
+
+        // 回调 ack 给发送方（如果提供）——包含服务器保存后的完整消息
+        try {
+          if (typeof ack === "function") {
+            ack({ success: true, message: outgoing });
+          }
+        } catch (e) {}
 
         // 广播到管理员监控房间
         io.to("room:admin-monitor").emit("admin:message", {
@@ -358,16 +422,16 @@ export default async function SocketHandler(
 
               // Send status update to both users in the conversation
               if (conv.agentId) {
-                userManager.sendToUser(conv.agentId, "message:status", [
-                  created.id,
-                  "delivered",
-                ]);
+                userManager.sendToUser(conv.agentId, "message:status", {
+                  messageId: created.id,
+                  status: "delivered",
+                });
               }
               if (conv.clientId) {
-                userManager.sendToUser(conv.clientId, "message:status", [
-                  created.id,
-                  "delivered",
-                ]);
+                userManager.sendToUser(conv.clientId, "message:status", {
+                  messageId: created.id,
+                  status: "delivered",
+                });
               }
             } else {
               console.log(
@@ -384,6 +448,11 @@ export default async function SocketHandler(
           message: "发送消息失败",
           details: error.message,
         });
+        try {
+          if (typeof ack === "function") {
+            ack({ success: false, error: error.message });
+          }
+        } catch (e) {}
       }
     });
     socket.on("messages:read", async (conversationId: string) => {
@@ -535,7 +604,7 @@ export default async function SocketHandler(
         conversations.set(conversation.id, conversation);
 
         // 通知请求者
-        socket.emit("conversation:created", conversation);
+        // socket.emit("conversation:created", conversation);
 
         // 获取请求者的用户信息
         const requester = userManager.getUserBySocketId(socket.id);
@@ -730,46 +799,80 @@ export default async function SocketHandler(
 
       if (user) {
         try {
-          // 如果是客服，更新数据库中的离线状态
+          // 如果是客服，检查是否还有其他设备在线
           if (user.role === "agent") {
-            try {
-              await prisma.agent.update({
-                where: { agentId: user.id },
+            const remainingConnections = userManager.getUserConnectionCount(
+              user.id
+            );
+
+            // 只有当所有设备都断开时，才更新数据库中的离线状态
+            if (remainingConnections <= 1) {
+              try {
+                await prisma.agent.update({
+                  where: { agentId: user.id },
+                  data: { isOnline: false },
+                });
+                console.log(`客服 ${user.name} 所有设备已离线`);
+
+                // 广播 agent 状态更新给所有客户端
+                io.emit("agent:status", {
+                  agentId: user.id,
+                  isOnline: false,
+                });
+              } catch (error) {
+                console.warn(`客服 ${user.name} 离线状态更新失败:`, error);
+              }
+
+              // 从数据库获取最新的客服列表并广播
+              const agents = await getAgentsFromDatabase();
+              io.emit("agents:list", agents);
+            } else {
+              console.log(
+                `客服 ${user.name} 仍有 ${remainingConnections - 1} 个设备在线`
+              );
+            }
+          } else if (user.role === "client") {
+            const remainingConnections = userManager.getUserConnectionCount(
+              user.id
+            );
+
+            // 只有当所有设备都断开时，才更新数据库中的离线状态
+            if (remainingConnections <= 1) {
+              await prisma.client.update({
+                where: { clientId: user.id },
                 data: { isOnline: false },
               });
-              console.log(`客服 ${user.name} 离线`);
-            } catch (error) {
-              console.warn(`客服 ${user.name} 离线状态更新失败:`, error);
+              console.log(`客户 ${user.name} 所有设备已离线`);
+
+              // 广播给所有客服更新客户列表
+              const onlineClients = await prisma.client.findMany({
+                where: { isOnline: true },
+                select: {
+                  id: true,
+                  clientId: true,
+                  name: true,
+                  isOnline: true,
+                },
+              });
+              io.emit("clients:list", onlineClients);
+            } else {
+              console.log(
+                `客户 ${user.name} 仍有 ${remainingConnections - 1} 个设备在线`
+              );
             }
-
-            // 从数据库获取最新的客服列表并广播
-            const agents = await getAgentsFromDatabase();
-            io.emit("agents:list", agents);
-          } else if (user.role === "client") {
-            // 更新客户离线状态
-            await prisma.client.update({
-              where: { clientId: user.id },
-              data: { isOnline: false },
-            });
-            console.log(`客户 ${user.name} 离线`);
-
-            // 广播给所有客服更新客户列表
-            const onlineClients = await prisma.client.findMany({
-              where: { isOnline: true },
-              select: {
-                id: true,
-                clientId: true,
-                name: true,
-                isOnline: true,
-              },
-            });
-            io.emit("clients:list", onlineClients);
           }
         } catch (error) {
           console.error("用户断开连接处理失败:", error);
         }
 
         userManager.userLogout(socket.id);
+      }
+    });
+    socket.on("user:get-devices", () => {
+      const user = userManager.getUserBySocketId(socket.id);
+      if (user) {
+        const devices = userManager.getUserDevices(user.id);
+        socket.emit("user:devices", devices);
       }
     });
   });

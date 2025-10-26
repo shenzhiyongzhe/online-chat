@@ -1,17 +1,19 @@
 import { Message } from "../../types";
 import { formatMessageTime } from "../../lib/utils";
-import { Check, CheckCheck } from "lucide-react";
+import { Check, CheckCheck, RefreshCw } from "lucide-react";
 
 interface MessageBubbleProps {
   message: Message;
   isOwn: boolean;
   senderName: string;
+  onRetry?: (msg: Message) => void;
 }
 
 export function MessageBubble({
   message,
   isOwn,
   senderName,
+  onRetry,
 }: MessageBubbleProps) {
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -19,6 +21,8 @@ export function MessageBubble({
         return (
           <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse" />
         );
+      case "failed":
+        return <RefreshCw className="w-3 h-3 text-red-500" />;
       case "sent":
         return <Check className="w-3 h-3 text-gray-400" />;
       case "delivered":
@@ -75,7 +79,21 @@ export function MessageBubble({
             <span className="text-xs text-gray-500">
               {formatMessageTime(message.timestamp)}
             </span>
-            {isOwn && getStatusIcon(message.status)}
+            {isOwn && (
+              <div className="flex items-center space-x-2">
+                {getStatusIcon(message.status)}
+                {/* 重试按钮，仅当失败时显示，可点击触发父组件的重试处理 */}
+                {(message as any).status === "failed" && onRetry && (
+                  <button
+                    onClick={() => onRetry(message)}
+                    className="text-xs text-red-600 hover:underline"
+                    aria-label="重试发送"
+                  >
+                    重试
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>

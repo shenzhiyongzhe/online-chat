@@ -106,6 +106,43 @@ class SocketService {
     }
   }
 
+  // Emit with socket.io acknowledgement support. Returns a Promise that resolves
+  // with the ack response or rejects on timeout/error.
+  emitWithAck<K extends keyof SocketEvents>(
+    event: K,
+    ...args: [...Parameters<SocketEvents[K]>, number?]
+  ): Promise<any> {
+    if (!this.socket) return Promise.reject(new Error("Socket not connected"));
+
+    // Optional timeout (ms) can be passed as last arg
+    let timeoutMs: number | undefined;
+    const last = args[args.length - 1];
+    if (typeof last === "number") {
+      timeoutMs = last as number;
+      args = args.slice(0, -1) as [...Parameters<SocketEvents[K]>];
+    }
+
+    return new Promise((resolve, reject) => {
+      try {
+        const sock = this.socket as Socket;
+        if (timeoutMs) {
+          sock
+            .timeout(timeoutMs)
+            .emit(event as string, ...(args as any), (err: any, res: any) => {
+              if (err) return reject(err);
+              resolve(res);
+            });
+        } else {
+          sock.emit(event as string, ...(args as any), (res: any) => {
+            resolve(res);
+          });
+        }
+      } catch (err) {
+        reject(err);
+      }
+    });
+  }
+
   on<K extends keyof SocketEvents>(event: K, callback: SocketEvents[K]): void {
     if (this.socket) {
       this.socket.on(event as string, callback as any);

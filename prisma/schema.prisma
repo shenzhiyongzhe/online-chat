@@ -23,6 +23,9 @@ model Agent {
 
   // 关联的会话
   conversations Conversation[] @relation("AgentConversations")
+  
+  // 关联的快捷模板
+  quickTemplates QuickTemplate[]
 
   @@map("agents")
 }
@@ -84,4 +87,20 @@ model Message {
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@map("messages")
+}
+
+// 快捷模板模型
+model QuickTemplate {
+  id        String   @id @default(cuid())
+  agentId   String   @map("agent_id")
+  title     String   @default("") // 模板标题
+  content   String   @db.Text // 模板内容
+  order     Int      @default(0) // 排序
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // 关联的客服
+  agent Agent @relation(fields: [agentId], references: [agentId], onDelete: Cascade)
+
+  @@map("quick_templates")
 }

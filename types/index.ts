@@ -2,7 +2,12 @@
 export type UserRole = "client" | "agent" | "admin";
 
 // 消息状态
-export type MessageStatus = "sending" | "sent" | "delivered" | "read";
+export type MessageStatus =
+  | "sending"
+  | "sent"
+  | "delivered"
+  | "read"
+  | "failed";
 
 // 客服信息
 export interface Agent {
