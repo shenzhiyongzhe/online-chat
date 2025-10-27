@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { MessageBubble } from "../../components/chat/MessageBubble";
 import { ConversationList } from "../../components/chat/ConversationList";
@@ -26,7 +26,7 @@ export default function AgentChatPage() {
   const [currentConversation, setCurrentConversation] =
     useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [clients, setClients] = useState<any[]>([]);
+  const messagesCountRef = useRef(0);
 
   const [notifications, setNotifications] = useState<
     Array<{
@@ -40,6 +40,18 @@ export default function AgentChatPage() {
   const [showDisplayNameModal, setShowDisplayNameModal] = useState(false);
   const [displayName, setDisplayName] = useState("");
   const [isSavingDisplayName, setIsSavingDisplayName] = useState(false);
+
+  // Memoized sorted conversations (unread first, then by time)
+  const sortedConversations = useMemo(() => {
+    return [...conversations].sort((a, b) => {
+      // First sort by unread count (descending)
+      if (b.unreadCount !== a.unreadCount) {
+        return (b.unreadCount || 0) - (a.unreadCount || 0);
+      }
+      // Then by last update time (descending)
+      return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+    });
+  }, [conversations]);
 
   const updateConversation = (
     conversationId: string,
@@ -56,7 +68,6 @@ export default function AgentChatPage() {
     setConversations([]);
     setCurrentConversation(null);
     setMessages([]);
-    setClients([]);
     setIsConnected(false);
   };
   // 新增：处理通知点击
@@ -185,9 +196,12 @@ export default function AgentChatPage() {
     }
   }, [router]);
 
-  // 自动滚动到底部
+  // 自动滚动到底部 - 只有当消息数量增加时才滚动
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (messages.length > messagesCountRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      messagesCountRef.current = messages.length;
+    }
   }, [messages]);
   // Socket连接逻辑
   useEffect(() => {
@@ -209,7 +223,19 @@ export default function AgentChatPage() {
       console.log("currentUser", JSON.stringify(currentUser));
       socket.emit("user:login", currentUser);
       socket.emit("agents:list");
-      socket.emit("clients:list");
+
+      // Fetch conversations from API
+      fetch(`/api/conversations?agentId=${currentUser.id}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success) {
+            console.log("Loaded conversations:", data.conversations.length);
+            setConversations(data.conversations);
+          }
+        })
+        .catch((error) => {
+          console.error("Failed to fetch conversations:", error);
+        });
     });
 
     socket.on("disconnect", () => {
@@ -293,27 +319,27 @@ export default function AgentChatPage() {
                 : conv
             )
           );
-          setClients((currentClients) => {
-            const senderClient = currentClients.find(
-              (c) => c.clientId === message.senderId
-            );
-            const senderName = senderClient?.name || "未知客户";
+          // Get client name from conversation
+          const senderClient = conversations.find(
+            (c) => c.clientId === message.senderId
+          );
+          const senderName =
+            senderClient?.clientDisplayName ||
+            senderClient?.client?.name ||
+            `客户 ${message.senderId}`;
 
-            setNotifications((prev) => {
-              if (prev.find((n) => n.message.id === message.id)) {
-                return prev;
-              }
-              return [
-                ...prev,
-                {
-                  id: message.id,
-                  message,
-                  senderName,
-                },
-              ];
-            });
-
-            return currentClients;
+          setNotifications((prev) => {
+            if (prev.find((n) => n.message.id === message.id)) {
+              return prev;
+            }
+            return [
+              ...prev,
+              {
+                id: message.id,
+                message,
+                senderName,
+              },
+            ];
           });
         }
 
@@ -368,11 +394,7 @@ export default function AgentChatPage() {
       }
     );
 
-    socket.on("clients:list", (clientsList: any[]) => {
-      console.log("收到客户列表:", clientsList);
-      setClients(clientsList);
-    });
-
+    // 修改 conversation:created 事件处理
     socket.on("conversation:created", (conversation: Conversation) => {
       console.log("收到新会话:", conversation);
 
@@ -382,7 +404,7 @@ export default function AgentChatPage() {
         return;
       }
 
-      // 将返回的真实会话插入/替换到会话列表：优先按 agentId+clientId 匹配临时会话替换
+      // 将返回的真实会话插入/替换到会话列表
       setConversations((prev) => {
         const matchedIndex = prev.findIndex(
           (c) =>
@@ -600,73 +622,6 @@ export default function AgentChatPage() {
     setIsSidebarOpen(false);
   };
 
-  const handleCreateConversationWithClient = (client: any) => {
-    if (!currentUser) return;
-
-    const conversationData = {
-      type: "agent" as const,
-      title: `与 ${client.name} 的对话`,
-      agentId: currentUser.id,
-      clientId: client.clientId,
-    };
-
-    console.log("创建与客户的会话:", conversationData);
-
-    // 检查是否已经存在该会话（包括临时会话）
-    const existingConv = conversations.find(
-      (c) =>
-        c.agentId === conversationData.agentId &&
-        c.clientId === conversationData.clientId
-    );
-
-    if (existingConv) {
-      // 如果会话已存在，直接切换到该会话
-      console.log("会话已存在，直接切换:", existingConv.id);
-      setCurrentConversation(existingConv);
-      setMessages([]);
-
-      const socket = socketService.getSocket();
-      if (socket) {
-        socket.emit("messages:get", existingConv.id);
-        socket.emit("messages:read", existingConv.id);
-      }
-
-      // 更新未读数为0
-      setConversations((prev) =>
-        prev.map((conv) =>
-          conv.id === existingConv.id ? { ...conv, unreadCount: 0 } : conv
-        )
-      );
-      // 移动端自动关闭侧边栏
-      setIsSidebarOpen(false);
-      return;
-    }
-
-    const tempId = generateId();
-    const tempConversation: Conversation = {
-      id: tempId,
-      type: conversationData.type,
-      title: conversationData.title,
-      agentId: conversationData.agentId,
-      clientId: conversationData.clientId,
-      lastMessage: "",
-      lastMessageTime: new Date().toISOString(),
-      unreadCount: 0,
-      updatedAt: new Date().toISOString(),
-    };
-    setConversations((prev) => [
-      tempConversation,
-      ...prev.filter((c) => c.id !== tempId),
-    ]);
-    setCurrentConversation(tempConversation);
-    setMessages([]);
-
-    socketService.emit("conversation:create", conversationData);
-
-    // 移动端自动关闭侧边栏
-    setIsSidebarOpen(false);
-  };
-
   const getCurrentChatPartner = () => {
     if (!currentConversation || !currentUser) return null;
 
@@ -703,7 +658,7 @@ export default function AgentChatPage() {
 
   return (
     <div className="h-screen flex bg-gray-100 relative overflow-hidden">
-      {/* 左侧客户列表 */}
+      {/* 左侧会话列表 */}
       <div
         className={`
           w-80 flex-shrink-0 bg-white border-r border-gray-200 flex flex-col
@@ -754,47 +709,78 @@ export default function AgentChatPage() {
           </div>
         </div>
 
-        {/* 客户列表 */}
+        {/* 会话列表 */}
         <div className="flex-1 overflow-y-auto">
-          {clients.length === 0 ? (
+          {sortedConversations.length === 0 ? (
             <div className="p-4 text-center text-gray-500">
-              <p className="text-sm">暂无在线客户</p>
+              <p className="text-sm">暂无会话</p>
             </div>
           ) : (
-            <div className="p-2">
-              {clients.map((client) => {
-                // 找到该客户对应的会话并获取未读数
-                const clientConv = conversations.find(
-                  (c) => c.clientId === client.clientId
-                );
-                const clientUnread = clientConv?.unreadCount ?? 0;
+            <div className="p-2 space-y-1">
+              {sortedConversations.map((conversation) => {
+                const displayName =
+                  conversation.clientDisplayName ||
+                  conversation.client?.name ||
+                  `客户 ${conversation.clientId}`;
+
+                // Format timestamp
+                const formatTime = (timestamp: string) => {
+                  const date = new Date(timestamp);
+                  const now = new Date();
+                  const diff = now.getTime() - date.getTime();
+                  const minutes = Math.floor(diff / 60000);
+                  const hours = Math.floor(diff / 3600000);
+                  const days = Math.floor(diff / 86400000);
+
+                  if (minutes < 1) return "刚刚";
+                  if (minutes < 60) return `${minutes}分钟前`;
+                  if (hours < 24) return `${hours}小时前`;
+                  if (days < 7) return `${days}天前`;
+                  return date.toLocaleDateString("zh-CN", {
+                    month: "short",
+                    day: "numeric",
+                  });
+                };
+
                 return (
                   <div
-                    key={client.clientId}
-                    onClick={() => handleCreateConversationWithClient(client)}
-                    className="flex items-center space-x-3 p-3 rounded-lg hover:bg-gray-100 cursor-pointer transition-colors"
+                    key={conversation.id}
+                    onClick={() => handleSelectConversation(conversation)}
+                    className={`p-3 rounded-lg cursor-pointer transition-colors ${
+                      currentConversation?.id === conversation.id
+                        ? "bg-blue-50 border-l-4 border-blue-500"
+                        : "hover:bg-gray-50"
+                    }`}
                   >
-                    <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center">
-                      <span className="text-white text-sm font-medium">
-                        {client.name.charAt(0)}
-                      </span>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">
-                        {client.name}
-                      </p>
-                      <div className="flex items-center space-x-1">
-                        <div className="w-2 h-2 rounded-full bg-green-500" />
-                        <span className="text-xs text-gray-500">在线</span>
-                      </div>
-                    </div>
-                    {clientUnread > 0 && (
-                      <div className="ml-2">
-                        <span className="inline-flex items-center justify-center px-2 py-0.5 text-xs font-medium leading-none text-white bg-red-500 rounded-full">
-                          {clientUnread > 99 ? "99+" : clientUnread}
+                    <div className="flex items-start space-x-3">
+                      <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0">
+                        <span className="text-white text-sm font-medium">
+                          {displayName.charAt(0)}
                         </span>
                       </div>
-                    )}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm font-medium text-gray-900 truncate">
+                            {displayName}
+                          </p>
+                          {conversation.unreadCount > 0 && (
+                            <span className="ml-2 inline-flex items-center justify-center px-2 py-0.5 text-xs font-medium leading-none text-white bg-red-500 rounded-full flex-shrink-0">
+                              {conversation.unreadCount > 99
+                                ? "99+"
+                                : conversation.unreadCount}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-500 truncate mt-1">
+                          {conversation.lastMessage || "暂无消息"}
+                        </p>
+                        {conversation.lastMessageTime && (
+                          <p className="text-xs text-gray-400 mt-1">
+                            {formatTime(conversation.lastMessageTime)}
+                          </p>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 );
               })}
@@ -802,50 +788,18 @@ export default function AgentChatPage() {
           )}
         </div>
 
-        {/* 会话列表 */}
-        {conversations.length > 0 && (
-          <div className="border-t border-gray-200">
-            <div className="p-4">
-              <h3 className="text-sm font-medium text-gray-700 mb-2">
-                最近会话
-              </h3>
-            </div>
-            <div className="max-h-40 overflow-y-auto">
-              {conversations.slice(0, 3).map((conversation) => (
-                <div
-                  key={conversation.id}
-                  onClick={() => handleSelectConversation(conversation)}
-                  className={`p-3 mx-2 rounded-lg cursor-pointer transition-colors ${
-                    currentConversation?.id === conversation.id
-                      ? "bg-blue-50"
-                      : "hover:bg-gray-50"
-                  }`}
-                >
-                  <div>
-                    <div>
-                      <p className="text-sm font-medium text-gray-900 truncate">
-                        {conversation.title || `客户 ${conversation.clientId}`}
-                      </p>
-                      <p className="text-xs text-gray-500 truncate">
-                        {conversation.lastMessage || "暂无消息"}
-                      </p>
-                    </div>
-                    {conversation.unreadCount &&
-                      conversation.unreadCount > 0 && (
-                        <div className="mt-1">
-                          <span className="inline-flex items-center justify-center px-2 py-0.5 text-xs font-medium leading-none text-white bg-red-500 rounded-full">
-                            {conversation.unreadCount > 99
-                              ? "99+"
-                              : conversation.unreadCount}
-                          </span>
-                        </div>
-                      )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        {/* 退出登录按钮 */}
+        <div className="border-t border-gray-200 p-4">
+          <button
+            onClick={() => {
+              localStorage.removeItem("agentInfo");
+              router.push("/admin");
+            }}
+            className="w-full px-4 py-2 text-sm text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md transition-colors"
+          >
+            退出登录
+          </button>
+        </div>
       </div>
 
       {/* 移动端遮罩层 */}
@@ -979,7 +933,7 @@ export default function AgentChatPage() {
                 </svg>
               </div>
               <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                点击客户头像开始聊天
+                暂无会话，等待客户发起对话
               </h3>
             </div>
           </div>

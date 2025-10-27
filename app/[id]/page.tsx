@@ -54,10 +54,14 @@ export default function AgentRoomPage() {
       setIsLoading(false);
     }
   }, []);
-
+  const messagesCountRef = useRef(0);
   // Auto scroll to bottom when messages change
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    // 只有当消息数量真正增加时才滚动
+    if (messages.length > messagesCountRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      messagesCountRef.current = messages.length;
+    }
   }, [messages]);
 
   // Socket connection and agent info
@@ -226,20 +230,36 @@ export default function AgentRoomPage() {
 
     socket.on("messages:list", (msgs: Message[]) => {
       console.log("收到历史消息列表，数量:", msgs?.length ?? 0);
-      console.log(
-        "历史消息列表:",
-        msgs?.map((m) => ({ id: m.id, content: m.content }))
-      );
-      // Replace messages completely to avoid duplicates
-      setMessages(msgs || []);
+      setMessages((prev) => {
+        // 检查是否有新消息
+        const existingIds = new Set(prev.map((m) => m.id));
+        const newMessages = msgs.filter((m) => !existingIds.has(m.id));
+
+        if (newMessages.length === 0) {
+          console.log("所有消息已存在，跳过更新");
+          return prev;
+        }
+
+        console.log(`新增 ${newMessages.length} 条消息`);
+
+        // 合并旧消息和新消息，按时间戳升序排序
+        const merged = [...prev, ...newMessages].sort((a, b) => {
+          const timeA = new Date(a.timestamp).getTime();
+          const timeB = new Date(b.timestamp).getTime();
+          return timeA - timeB;
+        });
+
+        console.log(
+          `合并消息: 原有 ${prev.length} 条，新增 ${newMessages.length} 条，总计 ${merged.length} 条`
+        );
+
+        return merged;
+      });
     });
 
     socket.on("conversation:created", (conversation: Conversation) => {
       console.log("收到会话创建成功事件:", conversation);
       setCurrentConversation(conversation);
-
-      // Clear messages when switching to new conversation
-      setMessages([]);
 
       // Get conversation messages immediately
       console.log("加载会话历史消息:", conversation.id);
@@ -249,14 +269,9 @@ export default function AgentRoomPage() {
       const pendingMessage = (window as any).pendingMessage;
       if (pendingMessage) {
         setTimeout(() => {
-          // Get current user from state at the time of execution
-          const currentUserState =
-            localStorage.getItem("clientNickname") || "null";
-          const userId = currentUserState ? `CLIENT_${currentUserState}` : "";
-
           const payload: Omit<Message, "id" | "timestamp" | "status"> = {
             conversationId: conversation.id,
-            senderId: userId,
+            senderId: currentUser?.id,
             content: pendingMessage.content,
             type: "text",
           };

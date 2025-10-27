@@ -604,7 +604,7 @@ export default async function SocketHandler(
         conversations.set(conversation.id, conversation);
 
         // 通知请求者
-        // socket.emit("conversation:created", conversation);
+        socket.emit("conversation:created", conversation);
 
         // 获取请求者的用户信息
         const requester = userManager.getUserBySocketId(socket.id);
