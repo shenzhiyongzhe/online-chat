@@ -368,12 +368,18 @@ export default async function SocketHandler(
           tempId: messageData?.tempId || undefined,
         };
 
-        // 更新会话的最后消息
+        // 更新会话的最后消息和未读数（只有client发送消息时才增加未读数）
         await prisma.conversation.update({
           where: { id: messageData.conversationId },
           data: {
             lastMessage: created.content,
             lastMessageTime: created.updatedAt,
+            // 只有client发送消息时才增加未读数
+            ...(messageData.senderId.startsWith("CLIENT_")
+              ? {
+                  unreadCount: { increment: 1 },
+                }
+              : {}),
           },
         });
 
@@ -626,6 +632,67 @@ export default async function SocketHandler(
         }
 
         console.log("会话创建成功:", conversation.id);
+
+        // 发送自动回复消息给client
+        const autoReplyContent = `您好！麻烦填写一下表
+
+姓名：
+城市区镇：
+手机号码：
+性别几岁：
+要借多少：
+工作岗位：
+做了多久：
+月入多少：
+发工资日：
+住房多久：
+租金多少：
+跟谁同住：
+婚姻状况：
+有无子女：
+征信情况：
+借款用途：
+有无房车：
+借空放没：
+芝麻信用：
+手机型号：
+描述情况：`;
+
+        const autoReplyMessage = await prisma.message.create({
+          data: {
+            conversationId: conversation.id,
+            senderId: conversationData.agentId,
+            content: autoReplyContent,
+            type: "form_request",
+            status: "sent",
+          },
+        });
+
+        // 创建空的表单记录
+        await prisma.clientForm.create({
+          data: {
+            conversationId: conversation.id,
+            clientId: conversationData.clientId,
+            isCompleted: false,
+          },
+        });
+
+        // 发送自动回复消息给client
+        const outgoing = {
+          id: autoReplyMessage.id,
+          conversationId: autoReplyMessage.conversationId,
+          senderId: autoReplyMessage.senderId,
+          content: autoReplyMessage.content,
+          type: autoReplyMessage.type,
+          status: autoReplyMessage.status,
+          timestamp: autoReplyMessage.createdAt.toISOString(),
+        };
+
+        userManager.sendToUser(
+          conversationData.clientId,
+          "message:receive",
+          outgoing
+        );
       } catch (error: any) {
         console.error("创建会话失败:", error);
         socket.emit("error", {

@@ -7,6 +7,8 @@ interface MessageBubbleProps {
   isOwn: boolean;
   senderName: string;
   onRetry?: (msg: Message) => void;
+  onFillForm?: (msg: Message) => void;
+  isFormCompleted?: boolean;
 }
 
 export function MessageBubble({
@@ -14,6 +16,8 @@ export function MessageBubble({
   isOwn,
   senderName,
   onRetry,
+  onFillForm,
+  isFormCompleted = false,
 }: MessageBubbleProps) {
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -69,6 +73,20 @@ export function MessageBubble({
               {message.content}
             </p>
           </div>
+
+          {/* 表单请求按钮 */}
+          {!isOwn && message.type === "form_request" && onFillForm && (
+            <button
+              onClick={() => onFillForm(message)}
+              className={`mt-2 px-4 py-2 rounded-lg hover:opacity-90 transition-colors text-sm font-medium ${
+                isFormCompleted
+                  ? "bg-green-600 text-white"
+                  : "bg-blue-600 text-white"
+              }`}
+            >
+              {isFormCompleted ? "修改" : "填写表单"}
+            </button>
+          )}
 
           {/* 时间和状态 */}
           <div

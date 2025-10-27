@@ -59,7 +59,7 @@ export interface Message {
   content: string;
   timestamp: string;
   status: MessageStatus;
-  type?: "text" | "emoji";
+  type?: "text" | "emoji" | "form_request" | "form_response";
 }
 
 // 当前用户信息

@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { MessageCircle, User, ArrowRight } from "lucide-react";
 import { MessageBubble } from "../../components/chat/MessageBubble";
 import { MessageInput } from "../../components/chat/MessageInput";
+import { ClientFormModal } from "../../components/chat/ClientFormModal";
 import { socketService } from "../../lib/socket";
 import { generateId } from "../../lib/utils";
 import { Message, Conversation, Agent, CurrentUser } from "../../types";
@@ -20,6 +21,10 @@ export default function AgentRoomPage() {
   const [isConnected, setIsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [showNicknameModal, setShowNicknameModal] = useState(false);
+  const [showFormModal, setShowFormModal] = useState(false);
+  const [formConversationId, setFormConversationId] = useState<string | null>(
+    null
+  );
   const [nickname, setNickname] = useState("");
   const [phone, setPhone] = useState("");
   const [nicknameError, setNicknameError] = useState("");
@@ -31,7 +36,6 @@ export default function AgentRoomPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [agent, setAgent] = useState<Agent | null>(null);
 
-  // Check for saved nickname and agent info on mount
   useEffect(() => {
     const savedNickname = localStorage.getItem("clientNickname");
     const savedPhone = localStorage.getItem("clientPhone");
@@ -123,20 +127,20 @@ export default function AgentRoomPage() {
     });
 
     // 添加监听 agent 状态更新事件
-    socket.on(
-      "agent:status",
-      (agentStatus: { agentId: string; isOnline: boolean }) => {
-        console.log("收到 agent 状态更新:", agentStatus);
-        if (agentStatus.agentId === agentId) {
-          setAgent((prev) => {
-            if (prev) {
-              return { ...prev, isOnline: agentStatus.isOnline };
-            }
-            return prev;
-          });
-        }
-      }
-    );
+    // socket.on(
+    //   "agent:status",
+    //   (agentStatus: { agentId: string; isOnline: boolean }) => {
+    //     console.log("收到 agent 状态更新:", agentStatus);
+    //     if (agentStatus.agentId === agentId) {
+    //       setAgent((prev) => {
+    //         if (prev) {
+    //           return { ...prev, isOnline: agentStatus.isOnline };
+    //         }
+    //         return prev;
+    //       });
+    //     }
+    //   }
+    // );
 
     socket.on("message:receive", (message: Message & { tempId?: string }) => {
       console.log("收到新消息:", message);
@@ -447,14 +451,8 @@ export default function AgentRoomPage() {
                         "客服"}
                     </h3>
                     <div className="flex items-center space-x-1">
-                      <div
-                        className={`w-2 h-2 rounded-full ${
-                          agent?.isOnline ? "bg-green-500" : "bg-gray-400"
-                        }`}
-                      />
-                      <span className="text-sm text-gray-500">
-                        {agent?.isOnline ? "在线" : "离线"}
-                      </span>
+                      <div className={`w-2 h-2 rounded-full bg-green-500`} />
+                      <span className="text-sm text-gray-500">{"在线"}</span>
                     </div>
                   </div>
                 </div>
@@ -485,6 +483,10 @@ export default function AgentRoomPage() {
                           ? currentUser?.name || "我"
                           : agent?.name || "客服"
                       }
+                      onFillForm={(msg) => {
+                        setFormConversationId(msg.conversationId);
+                        setShowFormModal(true);
+                      }}
                     />
                   ))}
                   <div ref={messagesEndRef} />
@@ -516,14 +518,8 @@ export default function AgentRoomPage() {
                         "客服"}
                     </h3>
                     <div className="flex items-center space-x-1">
-                      <div
-                        className={`w-2 h-2 rounded-full ${
-                          agent?.isOnline ? "bg-green-500" : "bg-gray-400"
-                        }`}
-                      />
-                      <span className="text-sm text-gray-500">
-                        {agent?.isOnline ? "在线" : "离线"}
-                      </span>
+                      <div className={`w-2 h-2 rounded-full bg-green-500`} />
+                      <span className="text-sm text-gray-500">{"在线"}</span>
                     </div>
                   </div>
                 </div>
@@ -638,6 +634,21 @@ export default function AgentRoomPage() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* Client form modal */}
+      {showFormModal && formConversationId && (
+        <ClientFormModal
+          conversationId={formConversationId}
+          isOpen={showFormModal}
+          onClose={() => {
+            setShowFormModal(false);
+            setFormConversationId(null);
+          }}
+          onSuccess={() => {
+            console.log("表单提交成功");
+          }}
+        />
       )}
     </div>
   );

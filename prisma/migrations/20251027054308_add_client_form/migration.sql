@@ -1,0 +1,33 @@
+-- CreateTable
+CREATE TABLE `client_forms` (
+    `id` VARCHAR(191) NOT NULL,
+    `conversation_id` VARCHAR(191) NOT NULL,
+    `client_id` VARCHAR(191) NOT NULL,
+    `name` VARCHAR(191) NULL,
+    `city` VARCHAR(191) NULL,
+    `phone` VARCHAR(191) NULL,
+    `age_gender` VARCHAR(191) NULL,
+    `loan_amount` VARCHAR(191) NULL,
+    `job_position` VARCHAR(191) NULL,
+    `job_duration` VARCHAR(191) NULL,
+    `monthly_income` VARCHAR(191) NULL,
+    `payday` VARCHAR(191) NULL,
+    `housing_duration` VARCHAR(191) NULL,
+    `rent` VARCHAR(191) NULL,
+    `living_with` VARCHAR(191) NULL,
+    `marital_status` VARCHAR(191) NULL,
+    `has_children` VARCHAR(191) NULL,
+    `credit_status` VARCHAR(191) NULL,
+    `loan_purpose` VARCHAR(191) NULL,
+    `has_property` VARCHAR(191) NULL,
+    `empty_loan` VARCHAR(191) NULL,
+    `sesame_credit` VARCHAR(191) NULL,
+    `phone_model` VARCHAR(191) NULL,
+    `description` TEXT NULL,
+    `is_completed` BOOLEAN NOT NULL DEFAULT false,
+    `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `updated_at` DATETIME(3) NOT NULL,
+
+    UNIQUE INDEX `client_forms_conversation_id_key`(`conversation_id`),
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
