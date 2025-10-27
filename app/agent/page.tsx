@@ -41,6 +41,11 @@ export default function AgentChatPage() {
   const [displayName, setDisplayName] = useState("");
   const [isSavingDisplayName, setIsSavingDisplayName] = useState(false);
 
+  // 表单查看器模态框相关状态
+  const [showFormViewerModal, setShowFormViewerModal] = useState(false);
+  const [formData, setFormData] = useState<any>(null);
+  const [isLoadingFormData, setIsLoadingFormData] = useState(false);
+
   // Memoized sorted conversations (unread first, then by time)
   const sortedConversations = useMemo(() => {
     return [...conversations].sort((a, b) => {
@@ -170,6 +175,33 @@ export default function AgentChatPage() {
       setIsSavingDisplayName(false);
     }
   };
+
+  // 处理打开表单查看器
+  const handleOpenFormViewer = async () => {
+    if (!currentConversation) return;
+
+    setIsLoadingFormData(true);
+    setShowFormViewerModal(true);
+
+    try {
+      const response = await fetch(
+        `/api/client-forms/${currentConversation.id}`
+      );
+      const data = await response.json();
+
+      if (data.success && data.form) {
+        setFormData(data.form);
+      } else {
+        setFormData(null);
+      }
+    } catch (error) {
+      console.error("获取表单数据失败:", error);
+      setFormData(null);
+    } finally {
+      setIsLoadingFormData(false);
+    }
+  };
+
   // 检查用户是否已登录
   useEffect(() => {
     const agentInfo = localStorage.getItem("agentInfo");
@@ -307,6 +339,7 @@ export default function AgentChatPage() {
         );
         // 显示页面内气泡通知（仅当不是自己发送的消息）
         if (!isCurrentConversation && !isSentByMe) {
+          // 不在这里增加unreadCount，因为后端已经会自动增加
           setConversations((prev) =>
             prev.map((conv) =>
               conv.id === message.conversationId
@@ -314,7 +347,7 @@ export default function AgentChatPage() {
                     ...conv,
                     lastMessage: message.content,
                     lastMessageTime: message.timestamp,
-                    unreadCount: (conv.unreadCount || 0) + 1,
+                    // unreadCount 由后端自动管理，不需要在这里手动增加
                   }
                 : conv
             )
@@ -389,6 +422,21 @@ export default function AgentChatPage() {
             msg.status !== "read"
               ? { ...msg, status: "read" }
               : msg
+          )
+        );
+      }
+    );
+
+    // 监听会话未读数更新
+    socket.on(
+      "conversation:unread",
+      (data: { conversationId: string; unreadCount: number }) => {
+        console.log("收到会话未读数更新:", data);
+        setConversations((prev) =>
+          prev.map((conv) =>
+            conv.id === data.conversationId
+              ? { ...conv, unreadCount: data.unreadCount }
+              : conv
           )
         );
       }
@@ -661,7 +709,7 @@ export default function AgentChatPage() {
       {/* 左侧会话列表 */}
       <div
         className={`
-          w-80 flex-shrink-0 bg-white border-r border-gray-200 flex flex-col
+          w-60 flex-shrink-0 bg-white border-r border-gray-200 flex flex-col
           fixed md:relative h-full z-30
           transition-transform duration-300 ease-in-out
           ${
@@ -793,6 +841,11 @@ export default function AgentChatPage() {
           <button
             onClick={() => {
               localStorage.removeItem("agentInfo");
+              // 断开 websocket 连接
+              const socket = socketService.getSocket();
+              if (socket) {
+                socket.disconnect();
+              }
               router.push("/admin");
             }}
             className="w-full px-4 py-2 text-sm text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md transition-colors"
@@ -840,40 +893,32 @@ export default function AgentChatPage() {
             {/* 聊天头部 */}
             <div className="p-4 border-b border-gray-200 bg-white">
               <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                  <button
-                    onClick={handleOpenDisplayName}
-                    className="w-10 h-10 bg-gray-300 rounded-full flex items-center justify-center hover:bg-gray-400 transition-colors cursor-pointer"
-                    title="点击设置自定义昵称"
-                  >
-                    <span className="text-sm font-medium text-gray-600">
-                      {chatPartner.name.charAt(0)}
-                    </span>
-                  </button>
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-900">
-                      {chatPartner.name}
-                    </h3>
-                    <div className="flex items-center space-x-1">
-                      <div className="w-2 h-2 rounded-full bg-green-500" />
-                      <span className="text-sm text-gray-500">在线</span>
-                      {currentConversation?.clientDisplayName && (
-                        <span className="text-xs text-blue-600 ml-2">
-                          ✏️ 自定义昵称
-                        </span>
-                      )}
-                    </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    {chatPartner.name}
+                  </h3>
+                  <div className="flex items-center space-x-1">
+                    <div className="w-2 h-2 rounded-full bg-green-500" />
+                    <span className="text-sm text-gray-500">在线</span>
+                    {currentConversation && (
+                      <span
+                        className="text-xs text-blue-600 ml-2 cursor-pointer"
+                        onClick={handleOpenDisplayName}
+                      >
+                        ✏️ 自定义昵称
+                      </span>
+                    )}
                   </div>
                 </div>
-                <button
-                  onClick={() => {
-                    localStorage.removeItem("agentInfo");
-                    router.push("/admin");
-                  }}
-                  className="px-3 py-1 text-sm text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md transition-colors"
-                >
-                  退出登录
-                </button>
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={handleOpenFormViewer}
+                    className="px-3 py-1.5 text-sm text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-md transition-colors border border-blue-600"
+                    title="查看客户表单"
+                  >
+                    📋 查看表单
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -1023,6 +1068,261 @@ export default function AgentChatPage() {
                   {isSavingDisplayName ? "保存中..." : "保存"}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 表单查看器模态框 */}
+      {showFormViewerModal && (
+        <div className="fixed inset-0 bg-gray-500/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xl font-bold text-gray-900">客户申请表</h3>
+                <button
+                  onClick={() => setShowFormViewerModal(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <svg
+                    className="h-5 w-5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6">
+              {isLoadingFormData ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                  <span className="ml-3 text-gray-600">加载中...</span>
+                </div>
+              ) : !formData || !formData.isCompleted ? (
+                <div className="text-center py-12 text-gray-500">
+                  <p>客户尚未填写表单</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {formData.name && (
+                      <div className="p-3 bg-gray-50 rounded-lg">
+                        <label className="text-xs text-gray-500">姓名</label>
+                        <p className="text-sm font-medium text-gray-900">
+                          {formData.name}
+                        </p>
+                      </div>
+                    )}
+                    {formData.city && (
+                      <div className="p-3 bg-gray-50 rounded-lg">
+                        <label className="text-xs text-gray-500">
+                          城市区镇
+                        </label>
+                        <p className="text-sm font-medium text-gray-900">
+                          {formData.city}
+                        </p>
+                      </div>
+                    )}
+                    {formData.phone && (
+                      <div className="p-3 bg-gray-50 rounded-lg">
+                        <label className="text-xs text-gray-500">
+                          手机号码
+                        </label>
+                        <p className="text-sm font-medium text-gray-900">
+                          {formData.phone}
+                        </p>
+                      </div>
+                    )}
+                    {formData.loanAmount && (
+                      <div className="p-3 bg-gray-50 rounded-lg">
+                        <label className="text-xs text-gray-500">
+                          要借多少
+                        </label>
+                        <p className="text-sm font-medium text-gray-900">
+                          {formData.loanAmount}
+                        </p>
+                      </div>
+                    )}
+                    {formData.ageGender && (
+                      <div className="p-3 bg-gray-50 rounded-lg">
+                        <label className="text-xs text-gray-500">
+                          性别几岁
+                        </label>
+                        <p className="text-sm font-medium text-gray-900">
+                          {formData.ageGender}
+                        </p>
+                      </div>
+                    )}
+                    {formData.jobPosition && (
+                      <div className="p-3 bg-gray-50 rounded-lg">
+                        <label className="text-xs text-gray-500">
+                          工作岗位
+                        </label>
+                        <p className="text-sm font-medium text-gray-900">
+                          {formData.jobPosition}
+                        </p>
+                      </div>
+                    )}
+                    {formData.jobDuration && (
+                      <div className="p-3 bg-gray-50 rounded-lg">
+                        <label className="text-xs text-gray-500">
+                          做了多久
+                        </label>
+                        <p className="text-sm font-medium text-gray-900">
+                          {formData.jobDuration}
+                        </p>
+                      </div>
+                    )}
+                    {formData.monthlyIncome && (
+                      <div className="p-3 bg-gray-50 rounded-lg">
+                        <label className="text-xs text-gray-500">
+                          月入多少
+                        </label>
+                        <p className="text-sm font-medium text-gray-900">
+                          {formData.monthlyIncome}
+                        </p>
+                      </div>
+                    )}
+                    {formData.payday && (
+                      <div className="p-3 bg-gray-50 rounded-lg">
+                        <label className="text-xs text-gray-500">
+                          发工资日
+                        </label>
+                        <p className="text-sm font-medium text-gray-900">
+                          {formData.payday}
+                        </p>
+                      </div>
+                    )}
+                    {formData.housingDuration && (
+                      <div className="p-3 bg-gray-50 rounded-lg">
+                        <label className="text-xs text-gray-500">
+                          住房多久
+                        </label>
+                        <p className="text-sm font-medium text-gray-900">
+                          {formData.housingDuration}
+                        </p>
+                      </div>
+                    )}
+                    {formData.rent && (
+                      <div className="p-3 bg-gray-50 rounded-lg">
+                        <label className="text-xs text-gray-500">
+                          租金多少
+                        </label>
+                        <p className="text-sm font-medium text-gray-900">
+                          {formData.rent}
+                        </p>
+                      </div>
+                    )}
+                    {formData.livingWith && (
+                      <div className="p-3 bg-gray-50 rounded-lg">
+                        <label className="text-xs text-gray-500">
+                          跟谁同住
+                        </label>
+                        <p className="text-sm font-medium text-gray-900">
+                          {formData.livingWith}
+                        </p>
+                      </div>
+                    )}
+                    {formData.maritalStatus && (
+                      <div className="p-3 bg-gray-50 rounded-lg">
+                        <label className="text-xs text-gray-500">
+                          婚姻状况
+                        </label>
+                        <p className="text-sm font-medium text-gray-900">
+                          {formData.maritalStatus}
+                        </p>
+                      </div>
+                    )}
+                    {formData.hasChildren && (
+                      <div className="p-3 bg-gray-50 rounded-lg">
+                        <label className="text-xs text-gray-500">
+                          有无子女
+                        </label>
+                        <p className="text-sm font-medium text-gray-900">
+                          {formData.hasChildren}
+                        </p>
+                      </div>
+                    )}
+                    {formData.creditStatus && (
+                      <div className="p-3 bg-gray-50 rounded-lg">
+                        <label className="text-xs text-gray-500">
+                          征信情况
+                        </label>
+                        <p className="text-sm font-medium text-gray-900">
+                          {formData.creditStatus}
+                        </p>
+                      </div>
+                    )}
+                    {formData.loanPurpose && (
+                      <div className="p-3 bg-gray-50 rounded-lg">
+                        <label className="text-xs text-gray-500">
+                          借款用途
+                        </label>
+                        <p className="text-sm font-medium text-gray-900">
+                          {formData.loanPurpose}
+                        </p>
+                      </div>
+                    )}
+                    {formData.hasProperty && (
+                      <div className="p-3 bg-gray-50 rounded-lg">
+                        <label className="text-xs text-gray-500">
+                          有无房车
+                        </label>
+                        <p className="text-sm font-medium text-gray-900">
+                          {formData.hasProperty}
+                        </p>
+                      </div>
+                    )}
+                    {formData.emptyLoan && (
+                      <div className="p-3 bg-gray-50 rounded-lg">
+                        <label className="text-xs text-gray-500">
+                          借空放没
+                        </label>
+                        <p className="text-sm font-medium text-gray-900">
+                          {formData.emptyLoan}
+                        </p>
+                      </div>
+                    )}
+                    {formData.sesameCredit && (
+                      <div className="p-3 bg-gray-50 rounded-lg">
+                        <label className="text-xs text-gray-500">
+                          芝麻信用
+                        </label>
+                        <p className="text-sm font-medium text-gray-900">
+                          {formData.sesameCredit}
+                        </p>
+                      </div>
+                    )}
+                    {formData.phoneModel && (
+                      <div className="p-3 bg-gray-50 rounded-lg">
+                        <label className="text-xs text-gray-500">
+                          手机型号
+                        </label>
+                        <p className="text-sm font-medium text-gray-900">
+                          {formData.phoneModel}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                  {formData.description && (
+                    <div className="p-3 bg-gray-50 rounded-lg">
+                      <label className="text-xs text-gray-500">描述情况</label>
+                      <p className="text-sm font-medium text-gray-900 whitespace-pre-wrap">
+                        {formData.description}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>

@@ -81,11 +81,31 @@ export default function AdminMonitorPage() {
       "admin:messages",
       (data: { conversationId: string; messages: Message[] }) => {
         console.log("收到会话消息:", data);
-        // 为每个会话独立存储消息
-        setConversationMessages((prev) => ({
-          ...prev,
-          [data.conversationId]: data.messages,
-        }));
+        // 为每个会话独立存储消息，合并新旧消息，去除重复
+        setConversationMessages((prev) => {
+          const existingMessages = prev[data.conversationId] || [];
+          const existingIds = new Set(existingMessages.map((m) => m.id));
+
+          // 只添加新消息
+          const newMessages = data.messages.filter(
+            (m) => !existingIds.has(m.id)
+          );
+
+          if (newMessages.length === 0 && existingMessages.length > 0) {
+            return prev; // 没有新消息，保持原样
+          }
+
+          // 合并并按时间排序
+          const allMessages = [...existingMessages, ...newMessages].sort(
+            (a, b) =>
+              new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+          );
+
+          return {
+            ...prev,
+            [data.conversationId]: allMessages,
+          };
+        });
       }
     );
 
@@ -140,7 +160,7 @@ export default function AdminMonitorPage() {
       socket.removeAllListeners();
       socket.disconnect();
     };
-  }, [selectedConversation]);
+  }, []); // 移除selectedConversation依赖，只在组件挂载时连接一次
 
   // Handle conversation selection
   const handleSelectConversation = (conversation: Conversation) => {
@@ -152,10 +172,8 @@ export default function AdminMonitorPage() {
       [conversation.id]: 0,
     }));
 
-    // 如果该会话还没有消息，则请求消息
-    if (!conversationMessages[conversation.id]) {
-      socketService.emit("admin:get-room-messages", conversation.id);
-    }
+    // 每次点击会话都请求消息，确保获取最新消息
+    socketService.emit("admin:get-room-messages", conversation.id);
   };
 
   // Get conversation display name

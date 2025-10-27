@@ -105,6 +105,11 @@ model QuickTemplate {
   @@map("quick_templates")
 }
 
+enum EnumGender {
+  male
+  female
+}
+
 // 客户表单模型
 model ClientForm {
   id              String    @id @default(cuid())
@@ -115,14 +120,15 @@ model ClientForm {
   name            String?   // 姓名
   city            String?   // 城市区镇
   phone           String?   // 手机号码
-  ageGender       String?   @map("age_gender") // 性别几岁
-  loanAmount      String?   @map("loan_amount") // 要借多少
+  gender          EnumGender  @default(male) @map("gender") // 性别
+  age             Int?       @default(0) @map("age") // 年龄
+  loanAmount      Int?       @default(0) @map("loan_amount") // 要借多少
   jobPosition     String?   @map("job_position") // 工作岗位
   jobDuration     String?   @map("job_duration") // 做了多久
-  monthlyIncome   String?   @map("monthly_income") // 月入多少
+  monthlyIncome   Int?       @default(0) @map("monthly_income") // 月入多少
   payday          String?   // 发工资日
   housingDuration String?   @map("housing_duration") // 住房多久
-  rent            String?   // 租金多少
+  rent            Int?       @default(0) @map("rent") // 租金多少
   livingWith      String?   @map("living_with") // 跟谁同住
   maritalStatus   String?   @map("marital_status") // 婚姻状况
   hasChildren     String?   @map("has_children") // 有无子女
@@ -132,7 +138,7 @@ model ClientForm {
   emptyLoan       String?   @map("empty_loan") // 借空放没
   sesameCredit    String?   @map("sesame_credit") // 芝麻信用
   phoneModel      String?   @map("phone_model") // 手机型号
-  description     String?   @db.Text // 描述情况
+  end_of_id       String?   @map("end_of_id") // 身份证后六位
 
   isCompleted Boolean   @default(false) @map("is_completed") // 是否已完成
   createdAt   DateTime  @default(now()) @map("created_at")

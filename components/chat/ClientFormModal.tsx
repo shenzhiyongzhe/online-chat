@@ -1,6 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { Input } from "@/components/ui/Input";
+import { Label } from "@/components/ui/Label";
+import { Select } from "@/components/ui/Select";
+import { Button } from "@/components/ui/Button";
+import { EnumGender } from "@prisma/client";
 
 interface ClientFormModalProps {
   conversationId: string;
@@ -19,30 +24,81 @@ export function ClientFormModal({
 }: ClientFormModalProps) {
   const [formData, setFormData] = useState({
     name: "",
+    gender: EnumGender.male,
+    age: 0,
     city: "",
     phone: "",
-    ageGender: "",
-    loanAmount: "",
+    loanAmount: 0,
+    loanPurpose: "",
     jobPosition: "",
     jobDuration: "",
-    monthlyIncome: "",
+    monthlyIncome: 0,
     payday: "",
     housingDuration: "",
-    rent: "",
+    rent: 0,
     livingWith: "",
     maritalStatus: "",
     hasChildren: "",
     creditStatus: "",
-    loanPurpose: "",
-    hasProperty: "",
-    emptyLoan: "",
     sesameCredit: "",
+    emptyLoan: "",
     phoneModel: "",
-    description: "",
+    hasProperty: "",
+    end_of_id: "",
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isLoading, setIsLoading] = useState(false);
+
+  // 加载表单数据
+  const loadFormData = async () => {
+    setIsLoading(true);
+    try {
+      const response = await fetch(`/api/client-forms/${conversationId}`);
+      const data = await response.json();
+
+      if (data.success && data.form) {
+        // 填充表单数据
+        const loadedForm = data.form;
+        setFormData({
+          name: loadedForm.name || "",
+          gender: loadedForm.gender || "",
+          age: loadedForm.age || 0,
+          city: loadedForm.city || "",
+          phone: loadedForm.phone || "",
+          loanAmount: loadedForm.loanAmount || 0,
+          loanPurpose: loadedForm.loanPurpose || "",
+          jobPosition: loadedForm.jobPosition || "",
+          jobDuration: loadedForm.jobDuration || "",
+          monthlyIncome: loadedForm.monthlyIncome || 0,
+          payday: loadedForm.payday || "",
+          housingDuration: loadedForm.housingDuration || "",
+          rent: loadedForm.rent || 0,
+          livingWith: loadedForm.livingWith || "",
+          maritalStatus: loadedForm.maritalStatus || "",
+          hasChildren: loadedForm.hasChildren || "",
+          creditStatus: loadedForm.creditStatus || "",
+          sesameCredit: loadedForm.sesameCredit || "",
+          emptyLoan: loadedForm.emptyLoan || "",
+          phoneModel: loadedForm.phoneModel || "",
+          hasProperty: loadedForm.hasProperty || "",
+          end_of_id: loadedForm.end_of_id || "",
+        });
+      }
+    } catch (error) {
+      console.error("加载表单数据失败:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen && conversationId) {
+      loadFormData();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, conversationId]);
 
   // 验证手机号码格式
   const validatePhone = (phone: string) => {
@@ -69,12 +125,12 @@ export function ClientFormModal({
       newErrors.phone = "请输入正确的手机号码";
     }
 
-    if (!formData.loanAmount.trim()) {
+    if (!formData.loanAmount) {
       newErrors.loanAmount = "请输入借款金额";
     }
 
     // 金额格式验证（数字）
-    if (formData.loanAmount.trim() && isNaN(Number(formData.loanAmount))) {
+    if (formData.loanAmount && isNaN(Number(formData.loanAmount))) {
       newErrors.loanAmount = "借款金额必须是数字";
     }
 
@@ -117,7 +173,7 @@ export function ClientFormModal({
     }
   };
 
-  const updateField = (field: string, value: string) => {
+  const updateField = (field: string, value: string | number) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
@@ -137,336 +193,356 @@ export function ClientFormModal({
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          {/* 基本信息 */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                姓名 <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={formData.name}
-                onChange={(e) => {
-                  updateField("name", e.target.value);
-                  if (errors.name) {
-                    setErrors((prev) => ({ ...prev, name: "" }));
+        {isLoading ? (
+          <div className="p-6 flex items-center justify-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <span className="ml-3 text-gray-600">加载中...</span>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="p-6 space-y-6">
+            <div className="flex gap-4 items-center">
+              <div className="flex flex-col gap-2">
+                <Label>
+                  姓名<span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  type="text"
+                  required
+                  value={formData.name}
+                  onChange={(e) => {
+                    updateField("name", e.target.value);
+                    if (errors.name) {
+                      setErrors((prev) => ({ ...prev, name: "" }));
+                    }
+                  }}
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                    errors.name ? "border-red-500" : "border-gray-300"
+                  }`}
+                />
+                {errors.name && (
+                  <p className="text-xs text-red-500 mt-1">{errors.name}</p>
+                )}
+              </div>
+              <div className="space-y-1">
+                <Label className="text-sm font-medium">性别年龄</Label>
+                <div className="flex border border-gray-300 rounded-md overflow-hidden focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 bg-white">
+                  {/* 性别下拉 */}
+                  <div className="relative flex items-center border-r border-gray-200">
+                    <Select
+                      className="appearance-none bg-transparent border-0 py-1 pl-3 pr-8 focus:ring-0 focus:outline-none text-gray-900 min-w-[80px]"
+                      value={formData.gender.toString()}
+                      onChange={(e) => updateField("gender", e.target.value)}
+                    >
+                      <option value={EnumGender.male}>男</option>
+                      <option value={EnumGender.female}>女</option>
+                    </Select>
+                    <div className="absolute right-2 pointer-events-none">
+                      <svg
+                        className="w-4 h-4 text-gray-400"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M19 9l-7 7-7-7"
+                        />
+                      </svg>
+                    </div>
+                  </div>
+
+                  {/* 年龄输入 */}
+                  <Input
+                    required
+                    type="number"
+                    className="flex-1 border-0 focus:ring-0 focus:outline-none py-2.5 px-3 placeholder-gray-400"
+                    placeholder="年龄"
+                    value={formData.age <= 0 ? "" : formData.age}
+                    onChange={(e) =>
+                      updateField("age", parseInt(e.target.value))
+                    }
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-4">
+              <div className="flex flex-col gap-2">
+                <Label>
+                  手机号码<span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  required
+                  type="tel"
+                  value={formData.phone}
+                  onChange={(e) => {
+                    updateField("phone", e.target.value);
+                    if (errors.phone) {
+                      setErrors((prev) => ({ ...prev, phone: "" }));
+                    }
+                  }}
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                    errors.phone ? "border-red-500" : "border-gray-300"
+                  }`}
+                />
+                {errors.phone && (
+                  <p className="text-xs text-red-500 mt-1">{errors.phone}</p>
+                )}
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label>城市区镇</Label>
+                <Input
+                  required
+                  type="text"
+                  value={formData.city}
+                  onChange={(e) => {
+                    updateField("city", e.target.value);
+                    if (errors.city) {
+                      setErrors((prev) => ({ ...prev, city: "" }));
+                    }
+                  }}
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                    errors.city ? "border-red-500" : "border-gray-300"
+                  }`}
+                />
+                {errors.city && (
+                  <p className="text-xs text-red-500 mt-1">{errors.city}</p>
+                )}
+              </div>
+            </div>
+            {/* 借款信息 */}
+            <div className="flex gap-4">
+              <div className="flex flex-col gap-2">
+                <Label>要借多少</Label>
+                <Input
+                  required
+                  type="number"
+                  value={formData.loanAmount || ""}
+                  onChange={(e) => {
+                    updateField("loanAmount", parseInt(e.target.value));
+                    if (errors.loanAmount) {
+                      setErrors((prev) => ({ ...prev, loanAmount: "" }));
+                    }
+                  }}
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                    errors.loanAmount ? "border-red-500" : "border-gray-300"
+                  }`}
+                />
+                {errors.loanAmount && (
+                  <p className="text-xs text-red-500 mt-1">
+                    {errors.loanAmount}
+                  </p>
+                )}
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label>月入多少</Label>
+                <Input
+                  required
+                  type="number"
+                  value={formData.monthlyIncome || ""}
+                  onChange={(e) =>
+                    updateField("monthlyIncome", parseInt(e.target.value))
                   }
-                }}
-                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                  errors.name ? "border-red-500" : "border-gray-300"
-                }`}
-              />
-              {errors.name && (
-                <p className="text-xs text-red-500 mt-1">{errors.name}</p>
-              )}
-            </div>
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                城市区镇 <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={formData.city}
-                onChange={(e) => {
-                  updateField("city", e.target.value);
-                  if (errors.city) {
-                    setErrors((prev) => ({ ...prev, city: "" }));
+              <div className="flex flex-col gap-2">
+                <Label>发工资日</Label>
+                <Input
+                  type="text"
+                  value={formData.payday || ""}
+                  onChange={(e) =>
+                    updateField("payday", e.target.value.toString())
                   }
-                }}
-                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                  errors.city ? "border-red-500" : "border-gray-300"
-                }`}
-              />
-              {errors.city && (
-                <p className="text-xs text-red-500 mt-1">{errors.city}</p>
-              )}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
             </div>
+            <div className="flex gap-4">
+              <div className="flex flex-col gap-2">
+                <Label>借款用途</Label>
+                <Input
+                  required
+                  type="text"
+                  value={formData.loanPurpose || ""}
+                  onChange={(e) => updateField("loanPurpose", e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+            </div>
+            <div className="flex gap-4">
+              <div className="flex flex-col gap-2">
+                <Label>工作岗位</Label>
+                <Input
+                  required
+                  type="text"
+                  value={formData.jobPosition}
+                  onChange={(e) => updateField("jobPosition", e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                手机号码 <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="tel"
-                value={formData.phone}
-                onChange={(e) => {
-                  updateField("phone", e.target.value);
-                  if (errors.phone) {
-                    setErrors((prev) => ({ ...prev, phone: "" }));
+              <div className="flex flex-col gap-2">
+                <Label>做了多久</Label>
+                <Input
+                  required
+                  type="text"
+                  value={formData.jobDuration}
+                  onChange={(e) => updateField("jobDuration", e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+            </div>
+            {/* 居住信息 */}
+            <div className="flex gap-4">
+              <div className="flex flex-col gap-2">
+                <Label>住房多久</Label>
+                <Input
+                  required
+                  type="text"
+                  value={formData.housingDuration}
+                  onChange={(e) =>
+                    updateField("housingDuration", e.target.value)
                   }
-                }}
-                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                  errors.phone ? "border-red-500" : "border-gray-300"
-                }`}
-              />
-              {errors.phone && (
-                <p className="text-xs text-red-500 mt-1">{errors.phone}</p>
-              )}
-            </div>
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                性别几岁
-              </label>
-              <input
-                type="text"
-                value={formData.ageGender}
-                onChange={(e) => updateField("ageGender", e.target.value)}
-                placeholder="如：男 30"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-          </div>
-
-          {/* 借款信息 */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                要借多少 <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={formData.loanAmount}
-                onChange={(e) => {
-                  updateField("loanAmount", e.target.value);
-                  if (errors.loanAmount) {
-                    setErrors((prev) => ({ ...prev, loanAmount: "" }));
+              <div className="flex flex-col gap-2">
+                <Label>租金多少</Label>
+                <Input
+                  required
+                  type="number"
+                  value={formData.rent || ""}
+                  onChange={(e) =>
+                    updateField("rent", parseInt(e.target.value))
                   }
-                }}
-                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                  errors.loanAmount ? "border-red-500" : "border-gray-300"
-                }`}
-              />
-              {errors.loanAmount && (
-                <p className="text-xs text-red-500 mt-1">{errors.loanAmount}</p>
-              )}
-            </div>
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                工作岗位
-              </label>
-              <input
-                type="text"
-                value={formData.jobPosition}
-                onChange={(e) => updateField("jobPosition", e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
+              <div className="flex flex-col gap-2">
+                <Label>跟谁同住</Label>
+                <Input
+                  required
+                  type="text"
+                  value={formData.livingWith}
+                  onChange={(e) => updateField("livingWith", e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
             </div>
+            <div className="flex gap-4">
+              <div className="flex flex-col gap-2">
+                <Label>婚姻状况</Label>
+                <Input
+                  required
+                  type="text"
+                  value={formData.maritalStatus}
+                  onChange={(e) => updateField("maritalStatus", e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                做了多久
-              </label>
-              <input
-                type="text"
-                value={formData.jobDuration}
-                onChange={(e) => updateField("jobDuration", e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
+              <div className="flex flex-col gap-2">
+                <Label>有无子女</Label>
+                <Input
+                  required
+                  type="text"
+                  value={formData.hasChildren}
+                  onChange={(e) => updateField("hasChildren", e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
             </div>
+            {/* 征信信息 */}
+            <div className="flex gap-4">
+              <div className="flex flex-col gap-2">
+                <Label>征信情况</Label>
+                <Input
+                  required
+                  type="text"
+                  value={formData.creditStatus}
+                  onChange={(e) => updateField("creditStatus", e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label>芝麻信用</Label>
+                <Input
+                  required
+                  value={formData.sesameCredit}
+                  onChange={(e) => updateField("sesameCredit", e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                月入多少
-              </label>
-              <input
-                type="text"
-                value={formData.monthlyIncome}
-                onChange={(e) => updateField("monthlyIncome", e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
+              <div className="flex flex-col gap-2">
+                <Label>借空放没</Label>
+                <Input
+                  required
+                  value={formData.emptyLoan}
+                  onChange={(e) => updateField("emptyLoan", e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
             </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                发工资日
-              </label>
-              <input
-                type="text"
-                value={formData.payday}
-                onChange={(e) => updateField("payday", e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
+            <div className="flex gap-4">
+              <div className="flex flex-col gap-2">
+                <Label>手机型号</Label>
+                <Input
+                  required
+                  value={formData.phoneModel}
+                  onChange={(e) => updateField("phoneModel", e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label>有无房车</Label>
+                <Input
+                  required
+                  type="text"
+                  value={formData.hasProperty}
+                  onChange={(e) => updateField("hasProperty", e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
             </div>
-          </div>
-
-          {/* 居住信息 */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                住房多久
-              </label>
-              <input
-                type="text"
-                value={formData.housingDuration}
-                onChange={(e) => updateField("housingDuration", e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                租金多少
-              </label>
-              <input
-                type="text"
-                value={formData.rent}
-                onChange={(e) => updateField("rent", e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                跟谁同住
-              </label>
-              <input
-                type="text"
-                value={formData.livingWith}
-                onChange={(e) => updateField("livingWith", e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                婚姻状况
-              </label>
-              <input
-                type="text"
-                value={formData.maritalStatus}
-                onChange={(e) => updateField("maritalStatus", e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            {/* 描述情况 */}
+            <div className="flex flex-col gap-2">
+              <Label>身份证后六位</Label>
+              <Input
+                required
+                value={formData.end_of_id}
+                onChange={(e) => updateField("end_of_id", e.target.value)}
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                有无子女
-              </label>
-              <input
-                type="text"
-                value={formData.hasChildren}
-                onChange={(e) => updateField("hasChildren", e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
+            {/* 按钮 */}
+            <div className="flex items-center justify-end space-x-3 pt-4">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isSubmitting
+                  ? "提交中..."
+                  : isCompleted
+                  ? "修改申请"
+                  : "提交申请"}
+              </button>
             </div>
-          </div>
-
-          {/* 征信信息 */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                征信情况
-              </label>
-              <input
-                type="text"
-                value={formData.creditStatus}
-                onChange={(e) => updateField("creditStatus", e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                借款用途
-              </label>
-              <input
-                type="text"
-                value={formData.loanPurpose}
-                onChange={(e) => updateField("loanPurpose", e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                有无房车
-              </label>
-              <input
-                type="text"
-                value={formData.hasProperty}
-                onChange={(e) => updateField("hasProperty", e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                借空放没
-              </label>
-              <input
-                type="text"
-                value={formData.emptyLoan}
-                onChange={(e) => updateField("emptyLoan", e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                芝麻信用
-              </label>
-              <input
-                type="text"
-                value={formData.sesameCredit}
-                onChange={(e) => updateField("sesameCredit", e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                手机型号
-              </label>
-              <input
-                type="text"
-                value={formData.phoneModel}
-                onChange={(e) => updateField("phoneModel", e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-          </div>
-
-          {/* 描述情况 */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              描述情况
-            </label>
-            <textarea
-              value={formData.description}
-              onChange={(e) => updateField("description", e.target.value)}
-              rows={4}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="请详细描述您的具体情况..."
-            />
-          </div>
-
-          {/* 按钮 */}
-          <div className="flex items-center justify-end space-x-3 pt-4">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
-            >
-              取消
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isSubmitting
-                ? "提交中..."
-                : isCompleted
-                ? "修改申请"
-                : "提交申请"}
-            </button>
-          </div>
-        </form>
+          </form>
+        )}
       </div>
     </div>
   );

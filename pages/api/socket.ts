@@ -369,7 +369,7 @@ export default async function SocketHandler(
         };
 
         // 更新会话的最后消息和未读数（只有client发送消息时才增加未读数）
-        await prisma.conversation.update({
+        const updatedConv = await prisma.conversation.update({
           where: { id: messageData.conversationId },
           data: {
             lastMessage: created.content,
@@ -381,11 +381,18 @@ export default async function SocketHandler(
                 }
               : {}),
           },
+          select: { unreadCount: true },
         });
-
         // 发送消息到用户房间
         if (conv.agentId) {
           userManager.sendToUser(conv.agentId, "message:receive", outgoing);
+          // 如果是client发送的消息，通知agent更新未读数
+          if (messageData.senderId.startsWith("CLIENT_")) {
+            userManager.sendToUser(conv.agentId, "conversation:unread", {
+              conversationId: messageData.conversationId,
+              unreadCount: updatedConv.unreadCount,
+            });
+          }
         }
         if (conv.clientId) {
           userManager.sendToUser(conv.clientId, "message:receive", outgoing);
@@ -639,7 +646,7 @@ export default async function SocketHandler(
 姓名：
 城市区镇：
 手机号码：
-性别几岁：
+性别年龄：
 要借多少：
 工作岗位：
 做了多久：
@@ -656,7 +663,7 @@ export default async function SocketHandler(
 借空放没：
 芝麻信用：
 手机型号：
-描述情况：`;
+身份证后六位：`;
 
         const autoReplyMessage = await prisma.message.create({
           data: {

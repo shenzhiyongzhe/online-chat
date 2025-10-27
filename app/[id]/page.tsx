@@ -35,6 +35,9 @@ export default function AgentRoomPage() {
     useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [agent, setAgent] = useState<Agent | null>(null);
+  const [formCompletionStatus, setFormCompletionStatus] = useState<
+    Record<string, boolean>
+  >({});
 
   useEffect(() => {
     const savedNickname = localStorage.getItem("clientNickname");
@@ -59,6 +62,7 @@ export default function AgentRoomPage() {
     }
   }, []);
   const messagesCountRef = useRef(0);
+
   // Auto scroll to bottom when messages change
   useEffect(() => {
     // 只有当消息数量真正增加时才滚动
@@ -66,6 +70,36 @@ export default function AgentRoomPage() {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
       messagesCountRef.current = messages.length;
     }
+  }, [messages]);
+
+  // 获取表单完成状态
+  const checkFormCompletion = async (conversationId: string) => {
+    try {
+      const response = await fetch(`/api/client-forms/${conversationId}`);
+      const data = await response.json();
+
+      if (data.success && data.form) {
+        setFormCompletionStatus((prev) => ({
+          ...prev,
+          [conversationId]: data.form.isCompleted || false,
+        }));
+      }
+    } catch (error) {
+      console.error("获取表单状态失败:", error);
+    }
+  };
+
+  // 当消息列表变化时，检查表单完成状态
+  useEffect(() => {
+    const formRequestMessages = messages.filter(
+      (msg) => msg.type === "form_request"
+    );
+
+    formRequestMessages.forEach((msg) => {
+      if (!formCompletionStatus[msg.conversationId]) {
+        checkFormCompletion(msg.conversationId);
+      }
+    });
   }, [messages]);
 
   // Socket connection and agent info
@@ -487,6 +521,12 @@ export default function AgentRoomPage() {
                         setFormConversationId(msg.conversationId);
                         setShowFormModal(true);
                       }}
+                      isFormCompleted={
+                        message.type === "form_request"
+                          ? formCompletionStatus[message.conversationId] ||
+                            false
+                          : false
+                      }
                     />
                   ))}
                   <div ref={messagesEndRef} />
@@ -641,12 +681,24 @@ export default function AgentRoomPage() {
         <ClientFormModal
           conversationId={formConversationId}
           isOpen={showFormModal}
+          isCompleted={
+            formConversationId
+              ? formCompletionStatus[formConversationId] || false
+              : false
+          }
           onClose={() => {
             setShowFormModal(false);
             setFormConversationId(null);
           }}
           onSuccess={() => {
             console.log("表单提交成功");
+            // 更新表单完成状态
+            if (formConversationId) {
+              setFormCompletionStatus((prev) => ({
+                ...prev,
+                [formConversationId]: true,
+              }));
+            }
           }}
         />
       )}
